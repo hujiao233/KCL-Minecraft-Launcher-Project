@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>脆冰社区 · KCL 启动器</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f8fc4'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --accent:#2f8fc4; --accent-2:#8fd8ff; --ice-1:#dff1fb; --ice-2:#bfe4f7;
+    --bg:#f2f8fc; --panel:#fff; --deep:#14384f; --text:#173a4f;
+    --muted:#6b8798; --line:rgba(47,143,196,.20); --radius:12px;
+    --shadow:0 6px 20px rgba(20,60,90,.10); --ok:#2e9e5b; --warn:#d97706; --bad:#d24b4b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.65 "Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+  .wrap{max-width:1060px;margin:0 auto;padding:18px 16px 70px}
+  .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--accent-2),var(--accent));
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:17px}
+  .top h1{font-size:19px;margin:0}
+  .sub{color:var(--muted);font-size:12.5px}
+  .spacer{flex:1}
+  .who{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+  .who b{color:var(--deep)}
+  button{cursor:pointer;font:inherit;border:none;border-radius:9px;padding:8px 14px;
+    background:var(--deep);color:#fff}
+  button:hover{filter:brightness(1.12)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .btn-pri{background:var(--accent)}
+  .btn-ghost{background:transparent;color:var(--deep);border:1px solid var(--line)}
+  .btn-xs{padding:4px 10px;font-size:12px;border-radius:8px}
+  .btn-bad{background:var(--bad)}
+  input,textarea,select{font:inherit;padding:8px 11px;border:1px solid var(--line);
+    border-radius:9px;background:#fff;color:var(--text);outline:none;width:100%}
+  input:focus,textarea:focus,select:focus{border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(47,143,196,.12)}
+  textarea{resize:vertical;min-height:74px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .tab{padding:8px 16px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    color:var(--muted);font-size:13.5px}
+  .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .grow{flex:1;min-width:160px}
+  .muted{color:var(--muted);font-size:12.5px}
+  .badge{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:999px;
+    background:var(--ice-1);color:var(--accent);margin-right:5px;vertical-align:1px}
+  .badge.gold{background:#fdf3dd;color:#b07a10}
+  .badge.green{background:#e2f6ea;color:var(--ok)}
+  .badge.red{background:#fdeaea;color:var(--bad)}
+  .title{font-weight:700;font-size:15px}
+  .content{white-space:pre-wrap;margin-top:6px;font-size:13.5px}
+  .actions{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
+  .like.on{color:var(--accent);font-weight:700}
+  .cmt{border-top:1px dashed var(--line);padding:8px 0 0;margin-top:8px;font-size:13px}
+  .cmt b{color:var(--accent)}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);top:-60px;transition:top .3s;
+    background:var(--deep);color:#fff;padding:10px 18px;border-radius:10px;z-index:99;
+    max-width:80vw}
+  .toast.on{top:22px}
+  .modal{position:fixed;inset:0;background:rgba(10,35,55,.45);display:none;
+    place-items:center;z-index:50;padding:16px}
+  .modal.on{display:grid}
+  .mbox{background:#fff;border-radius:14px;padding:20px;width:min(560px,100%);
+    max-height:86vh;overflow:auto}
+  .mbox h3{margin:0 0 10px}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+  .srv-img{width:100%;max-height:200px;object-fit:cover;border-radius:9px;margin-top:8px;
+    border:1px solid var(--line)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  .kv{font-size:12.5px;color:var(--muted)}
+  .kv b{color:var(--deep)}
+  .empty{text-align:center;color:var(--muted);padding:26px 0}
+  .banner{background:linear-gradient(135deg,var(--ice-2),var(--ice-1));border:1px solid var(--line);
+    border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;font-size:13px}
+  iframe.admin{width:100%;height:78vh;border:1px solid var(--line);border-radius:var(--radius);
+    background:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="logo">冰</div>
+    <div>
+      <h1>脆冰社区</h1>
+      <div class="sub">KCL 启动器 · KC studio — 社区 / 资源 / MC 服务器宣传 / 合作 / 开发空间</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="who" id="who">未设置昵称</div>
+    <button class="btn-ghost btn-xs" id="btnWho">设置昵称</button>
+    <button class="btn-ghost btn-xs" id="btnAdmin">我是管理员</button>
+    <button class="btn-ghost btn-xs" id="btnMode" style="display:none">切换管理员面板</button>
+  </div>
+
+  <div class="banner" id="adminBanner" style="display:none">
+    🔑 管理员模式：可以看到全部建议与内容、管理版本发布。点击右上角按钮可在「普通 / 管理员」两种界面间切换。
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-tab="dev">开发空间</button>
+    <button class="tab" data-tab="community">MC 社区</button>
+    <button class="tab" data-tab="resource">资源 · KCL玩家开发</button>
+    <button class="tab" data-tab="servers">MC 服务器宣传</button>
+    <button class="tab" data-tab="coops">合作</button>
+    <button class="tab" data-tab="suggestion">建议</button>
+    <button class="tab" data-tab="admin" id="tabAdmin" style="display:none">版本管理（后台）</button>
+  </div>
+
+  <div id="pane-admin" style="display:none">
+    <iframe class="admin" src="/admin" title="版本管理后台"></iframe>
+  </div>
+
+  <div id="pane-main">
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn-pri" id="btnNew">✎ 发布</button>
+      <span class="muted" id="paneTip"></span>
+    </div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<!-- 发布 / 编辑弹窗 -->
+<div class="modal" id="mNew">
+  <div class="mbox">
+    <h3 id="mNewTitle">发布</h3>
+    <div class="fld" id="fSrv" style="display:none">
+      <label>服务器名称</label><input id="nSrvName" maxlength="80">
+      <div class="grid2" style="margin-top:8px">
+        <div><label>类型（生存 / 空岛 / 模组…）</label><input id="nSrvType" maxlength="40"></div>
+        <div><label>MC 版本</label><input id="nSrvVer" maxlength="40" placeholder="如 1.20.1"></div>
+        <div><label>人数上限</label><input id="nSrvMax" type="number" min="0" value="20"></div>
+        <div><label>整合包（选填）</label><input id="nSrvPack" maxlength="200"></div>
+      </div>
+      <label style="margin-top:8px">宣传图链接（选填）</label><input id="nSrvImg" maxlength="1000">
+      <label style="margin-top:8px">宣传语</label><textarea id="nSrvSlogan" maxlength="500"></textarea>
+      <label style="margin-top:8px">必装 mod（一行一个，选填）</label><textarea id="nSrvMods" maxlength="4000"></textarea>
+      <label style="margin-top:8px">服务器地址（加入并同意后才公开）</label><input id="nSrvAddr" maxlength="200">
+      <div class="grid2" style="margin-top:8px">
+        <div><label>QQ 群（同意后可见）</label><input id="nSrvQQ" maxlength="100"></div>
+        <div><label>kukechat 群（同意后可见）</label><input id="nSrvKuke" maxlength="100"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="row" style="gap:5px"><input type="checkbox" id="nSrvApprove" checked style="width:auto">加入需要我同意</label>
+        <label class="row" style="gap:5px"><input type="checkbox" id="nSrvMarkon" style="width:auto">支持 markon</label>
+      </div>
+    </div>
+    <div class="fld" id="fTitle"><label>标题</label><input id="nTitle" maxlength="200"></div>
+    <div class="fld" id="fContent"><label>内容</label><textarea id="nContent" maxlength="20000"></textarea></div>
+    <div class="fld" id="fFile">
+      <label>附件（mod / 整合包 / 资源文件，选填）</label>
+      <input type="file" id="nFile">
+      <div class="muted" id="fileHint" style="margin-top:4px"></div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn-ghost" id="nCancel">取消</button>
+      <button class="btn-pri" id="nOk">发布</button>
+    </div>
+  </div>
+</div>
+
+<!-- 服务器详情弹窗 -->
+<div class="modal" id="mSrv">
+  <div class="mbox" id="mSrvBox"></div>
+</div>
+
+<!-- 合作详情弹窗 -->
+<div class="modal" id="mCoop">
+  <div class="mbox" id="mCoopBox"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtSize = (n) => n >= 1048576 ? (n/1048576).toFixed(1)+" MB"
+  : n >= 1024 ? (n/1024).toFixed(1)+" KB" : n+" B";
+
+let ME = null;         // {uid, name, secret}
+let ADMIN = false;     // 管理员登录状态
+let ADMIN_MODE = false;// 普通/管理员界面切换
+let TAB = "dev";
+let SRV_CACHE = [];
+
+try { ME = JSON.parse(localStorage.getItem("kcl.site.me") || "null"); } catch (e) {}
+try { ADMIN_MODE = localStorage.getItem("kcl.site.adminMode") === "1"; } catch (e) {}
+
+function saveMe() { localStorage.setItem("kcl.site.me", JSON.stringify(ME)); }
+function renderWho() {
+  $("#who").innerHTML = ME ? ("你好，<b>" + esc(ME.name) + "</b>") : "未设置昵称";
+}
+
+async function api(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign({"Content-Type":"application/json"}, opts.headers || {});
+  if (ME) { headers["X-Uid"] = ME.uid; headers["X-Secret"] = ME.secret; }
+  const r = await fetch(path, {method: opts.method || "GET", headers, body: opts.body});
+  let j = null;
+  try { j = await r.json(); } catch (e) { j = {ok:false, msg:"HTTP " + r.status}; }
+  return j;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 2600);
+}
+
+function ensureName() {
+  if (ME) return Promise.resolve(ME);
+  const name = prompt("先给自己起个名字（社区里的昵称）：");
+  if (!name || !name.trim()) return Promise.resolve(null);
+  return api("/api/user/login", {method:"POST", body: JSON.stringify({name: name.trim()})})
+    .then((r) => {
+      if (!r.ok) { toast(r.msg || "登录失败"); return null; }
+      ME = {uid: r.uid, name: r.name, secret: r.secret};
+      saveMe(); renderWho();
+      return ME;
+    });
+}
+
+// ---------- 管理员 ----------
+async function adminLogin() {
+  const pwd = prompt("请输入管理员口令：");
+  if (!pwd) return;
+  const r = await api("/api/login", {method:"POST", body: JSON.stringify({password: pwd})});
+  if (!r.ok) { toast(r.msg || "口令不对"); return; }
+  ADMIN = true;
+  applyAdminUI();
+  toast("管理员已登录（同一设备 1 天内免重输）");
+  refresh();
+}
+function applyAdminUI() {
+  $("#tabAdmin").style.display = ADMIN ? "" : "none";
+  $("#btnMode").style.display = ADMIN ? "" : "none";
+  $("#adminBanner").style.display = (ADMIN && ADMIN_MODE) ? "" : "none";
+  if (ADMIN && ADMIN_MODE) $("#btnMode").textContent = "回到普通模式";
+  else if (ADMIN) $("#btnMode").textContent = "进入管理员面板";
+}
+
+// ---------- Tab ----------
+const TIPS = {
+  dev: "开发团队的动态空间：看更新、聊开发，也可以发帖互动。",
+  community: "MC 讨论社区：随便聊，也可以传 mod / 整合包。",
+  resource: "上传资源到 KCL，渠道会标注「KCL玩家开发」。",
+  servers: "宣传你的 MC 服务器：类型 / 版本 / 宣传图 / mod / 人数上限，支持 markon。",
+  coops: "找人一起做 mod：消息和文件只有加入的人能看到。",
+  suggestion: "对启动器或网站的建议会直达管理员。",
+};
+function switchTab(t) {
+  TAB = t;
+  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  $("#pane-admin").style.display = (t === "admin") ? "" : "none";
+  $("#pane-main").style.display = (t === "admin") ? "none" : "";
+  $("#paneTip").textContent = TIPS[t] || "";
+  refresh();
+}
+document.querySelectorAll(".tab").forEach((b) =>
+  b.addEventListener("click", () => switchTab(b.dataset.tab)));
+
+// ---------- 列表渲染 ----------
+function postCard(p, kind) {
+  const d = document.createElement("div");
+  d.className = "card";
+  let file = "";
+  if (p.file) file = `<div class="actions"><a href="/f/${p.file.id}" download>⬇ ${esc(p.file.name)}（${fmtSize(p.file.size)}）</a></div>`;
+  d.innerHTML = `
+    <div class="row">
+      <span class="title">${esc(p.title || "（无标题）")}</span>
+      ${kind === "resource" ? '<span class="badge gold">KCL玩家开发</span>' : ""}
+      <span class="spacer"></span>
+      <span class="muted">${esc(p.author)} · ${esc(p.createdAt)}</span>
+    </div>
+    <div class="content">${esc(p.content)}</div>
+    ${file}
+    <div class="actions">
+      <button class="btn-ghost btn-xs like ${p.liked ? "on" : ""}" data-a="like">👍 ${p.likes}</button>
+      <button class="btn-ghost btn-xs" data-a="cmt">💬 ${p.comments}</button>
+      ${(ME && p.authorUid === ME.uid) || ADMIN ? '<button class="btn-ghost btn-xs" data-a="del">删除</button>' : ""}
+    </div>
+    <div class="cmts" hidden></div>`;
+  d.querySelector('[data-a="like"]').onclick = async () => {
+    if (!(await ensureName())) return;
+    const r = await api("/api/posts/" + p.id + "/like", {method:"POST", body:"{}"});
+    if (!r.ok) { toast(r.msg || "操作失败"); return; }
+    refresh();
+  };
+  d.querySelector('[data-a="cmt"]').onclick = () => toggleCmts(d, p);
+  const del = d.querySelector('[data-a="del"]');
+  if (del) del.onclick = async () => {
+    if (!confirm("确定删除这条帖子？")) return;
+    const r = await api("/api/posts/" + p.id + "/delete", {method:"POST", body:"{}"});
+    if (!r.ok) { toast(r.msg || "删除失败"); return; }
+    refresh();
+  };
+  return d;
+}
+
+async function toggleCmts(card, p) {
+  const box = card.querySelector(".cmts");
+  if (!box.hidden) { box.hidden = true; return; }
+  box.hidden = false;
+  const r = await api("/api/posts/" + p.id + "/comments");
+  const list = r.ok ? r.list : [];
+  box.innerHTML = list.map((c) =>
+    `<div class="cmt"><b>${esc(c.author)}</b> <span class="muted">${esc(c.createdAt)}</span><br>${esc(c.text)}</div>`).join("")
+    + `<div class="row" style="margin-top:8px">
+        <input class="grow" placeholder="写评论…" maxlength="4000">
+        <button class="btn-pri btn-xs">发送</button></div>`;
+  const inp = box.querySelector("input");
+  box.querySelector("button").onclick = async () => {
+    if (!(await ensureName())) return;
+    const t = inp.value.trim();
+    if (!t) return;
+    const rr = await api("/api/posts/" + p.id + "/comments",
+      {method:"POST", body: JSON.stringify({text: t})});
+    if (!rr.ok) { toast(rr.msg || "发送失败"); return; }
+    toggleCmts(card, p); toggleCmts(card, p);
+  };
+}
+
+function renderList(items, kind) {
+  const box = $("#list");
+  box.innerHTML = "";
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">还没有内容，点上面的「✎ 发布」发第一条吧。</div>';
+    return;
+  }
+  items.forEach((p) => box.appendChild(postCard(p, kind)));
+}
+
+// ---------- 服务器卡片 ----------
+function serverCard(s) {
+  const d = document.createElement("div");
+  d.className = "card";
+  const st = s.joinStatus;
+  const stBadge = st === "approved" ? '<span class="badge green">已加入</span>'
+    : st === "pending" ? '<span class="badge">等待服主同意</span>'
+    : st === "rejected" ? '<span class="badge red">已被拒绝</span>' : "";
+  d.innerHTML = `
+    <div class="row">
+      <span class="title">${esc(s.name)}</span>
+      ${s.type ? `<span class="badge">${esc(s.type)}</span>` : ""}
+      ${s.version ? `<span class="badge">MC ${esc(s.version)}</span>` : ""}
+      ${s.markon ? '<span class="badge gold">markon</span>' : ""}
+      ${stBadge}
+      <span class="spacer"></span>
+      <span class="muted">服主 ${esc(s.owner)} · 更新于 ${esc(s.updatedAt)}</span>
+    </div>
+    ${s.slogan ? `<div class="content">${esc(s.slogan)}</div>` : ""}
+    ${s.image ? `<img class="srv-img" src="${esc(s.image)}" alt="宣传图"
+        onerror="this.style.display='none'">` : ""}
+    <div class="row" style="margin-top:8px">
+      <span class="kv">人数上限 <b>${s.maxPlayers || "不限"}</b></span>
+      <span class="kv">必装 mod <b>${s.mods.length}</b> 个</span>
+      ${s.modpack ? `<span class="kv">整合包 <b>${esc(s.modpack)}</b></span>` : ""}
+      ${s.address != null ? `<span class="kv">地址 <b>${esc(s.address || "（服主未填）")}</b></span>` : ""}
+    </div>
+    <div class="actions">
+      <button class="btn-pri btn-xs" data-a="join">${st === "approved" ? "已加入 · 查看详情" : "我要加入服务器"}</button>
+      ${st === "approved" || s.ownerUid === (ME && ME.uid) ? '<button class="btn-ghost btn-xs" data-a="ann">论坛 / 公告</button>' : ""}
+      ${s.ownerUid === (ME && ME.uid) ? `
+        <button class="btn-ghost btn-xs" data-a="edit">编辑</button>
+        <button class="btn-ghost btn-xs" data-a="reqs">加入申请</button>
+        <button class="btn-ghost btn-xs" data-a="del">删除</button>` : ""}
+    </div>`;
+  d.querySelector('[data-a="join"]').onclick = () => joinServer(s);
+  const ann = d.querySelector('[data-a="ann"]');
+  if (ann) ann.onclick = () => showAnnounces(s);
+  const edit = d.querySelector('[data-a="edit"]');
+  if (edit) edit.onclick = () => openNew("servers", s);
+  const reqs = d.querySelector('[data-a="reqs"]');
+  if (reqs) reqs.onclick = () => showRequests(s);
+  const del = d.querySelector('[data-a="del"]');
+  if (del) del.onclick = async () => {
+    if (!confirm("确定删除这个服务器宣传？")) return;
+    const r = await api("/api/servers/" + s.id + "/delete", {method:"POST", body:"{}"});
+    if (!r.ok) { toast(r.msg || "删除失败"); return; }
+    refresh();
+  };
+  return d;
+}
+
+async function joinServer(s) {
+  if (!(await ensureName())) return;
+  if (s.joinStatus !== "approved" && s.ownerUid !== (ME && ME.uid)) {
+    const r = await api("/api/servers/" + s.id + "/join", {method:"POST", body:"{}"});
+    if (!r.ok) { toast(r.msg || "申请失败"); return; }
+    if (r.status === "approved") toast("已加入！服务器地址已经告知。");
+    else if (r.status === "pending") toast("申请已提交，等服主同意后会告知地址。");
+    await loadServers(); return;
+  }
+  // 已加入 → 详情
+  const r = await api("/api/servers/" + s.id);
+  const sv = r.ok ? r.server : s;
+  openModal("#mSrv");
+  $("#mSrvBox").innerHTML = `
+    <h3>${esc(sv.name)}</h3>
+    <div class="row" style="margin-bottom:8px">
+      ${sv.type ? `<span class="badge">${esc(sv.type)}</span>` : ""}
+      ${sv.version ? `<span class="badge">MC ${esc(sv.version)}</span>` : ""}
+      ${sv.markon ? '<span class="badge gold">markon</span>' : ""}
+    </div>
+    ${sv.slogan ? `<div class="content">${esc(sv.slogan)}</div>` : ""}
+    <div class="kv" style="margin-top:8px">服务器地址：<b>${esc(sv.address || "（服主未填）")}</b></div>
+    <div class="kv">QQ 群：<b>${esc(sv.qqGroup || "—")}</b>　kukechat 群：<b>${esc(sv.kukeGroup || "—")}</b></div>
+    ${sv.mods.length ? `<div class="kv" style="margin-top:8px">必装 mod：<br>${sv.mods.map((m) => "· " + esc(m)).join("<br>")}</div>` : ""}
+    ${sv.modpack ? `<div class="kv">整合包：${esc(sv.modpack)}</div>` : ""}
+    <div class="muted" style="margin-top:8px">
+      加入成功后，启动器会在下次启动对应版本时自动尝试加入该服务器
+      （没写版本 / mod → 自动下载服主版本；写了 mod → 重装游戏再装 mod）。
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn-ghost" onclick="document.querySelector('#mSrv').classList.remove('on')">关闭</button>
+    </div>`;
+}
+
+async function showAnnounces(s) {
+  const r = await api("/api/servers/" + s.id + "/announces");
+  const list = r.ok ? r.list : [];
+  openModal("#mSrv");
+  const mine = s.ownerUid === (ME && ME.uid) || ADMIN;
+  $("#mSrvBox").innerHTML = `
+    <h3>${esc(s.name)} · 服务器论坛</h3>
+    <div id="annList">${list.length ? list.map((a) =>
+      `<div class="cmt"><b>${esc(a.author)}</b> <span class="muted">${esc(a.createdAt)}</span><br>${esc(a.text)}</div>`
+    ).join("") : '<div class="empty">还没有公告。</div>'}</div>
+    ${mine ? `<div class="row" style="margin-top:10px">
+      <input class="grow" id="annText" placeholder="发布公告（加入的人都能看到）" maxlength="4000">
+      <button class="btn-pri btn-xs" id="annSend">发布</button></div>` : ""}
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn-ghost" onclick="document.querySelector('#mSrv').classList.remove('on')">关闭</button>
+    </div>`;
+  const send = $("#annSend");
+  if (send) send.onclick = async () => {
+    const t = $("#annText").value.trim();
+    if (!t) return;
+    const rr = await api("/api/servers/" + s.id + "/announce",
+      {method:"POST", body: JSON.stringify({text: t})});
+    if (!rr.ok) { toast(rr.msg || "发布失败"); return; }
+    showAnnounces(s);
+  };
+}
+
+async function showRequests(s) {
+  const r = await api("/api/servers/" + s.id + "/requests");
+  const list = r.ok ? r.list : [];
+  openModal("#mSrv");
+  $("#mSrvBox").innerHTML = `
+    <h3>${esc(s.name)} · 加入申请</h3>
+    ${list.length ? list.map((x) => `
+      <div class="cmt"><b>${esc(x.name)}</b> <span class="muted">${esc(x.createdAt)}</span>
+        <span class="badge ${x.status === "approved" ? "green" : x.status === "rejected" ? "red" : ""}">${
+          x.status === "approved" ? "已同意" : x.status === "rejected" ? "已拒绝" : "待处理"}</span>
+        ${x.status === "pending" ? `
+          <span class="row" style="display:inline-flex;margin-left:8px">
+            <button class="btn-pri btn-xs" data-id="${x.id}" data-ok="1">同意</button>
+            <button class="btn-bad btn-xs" data-id="${x.id}" data-ok="0">拒绝</button>
+          </span>` : ""}
+      </div>`).join("") : '<div class="empty">还没有人申请。</div>'}
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn-ghost" onclick="document.querySelector('#mSrv').classList.remove('on')">关闭</button>
+    </div>`;
+  $("#mSrvBox").querySelectorAll("button[data-id]").forEach((b) => {
+    b.onclick = async () => {
+      const rr = await api("/api/joinreqs/" + b.dataset.id + "/decide",
+        {method:"POST", body: JSON.stringify({approve: b.dataset.ok === "1"})});
+      if (!rr.ok) { toast(rr.msg || "操作失败"); return; }
+      showRequests(s);
+    };
+  });
+}
+
+// ---------- 合作 ----------
+function coopCard(c) {
+  const d = document.createElement("div");
+  d.className = "card";
+  d.innerHTML = `
+    <div class="row">
+      <span class="title">${esc(c.title)}</span>
+      <span class="spacer"></span>
+      <span class="muted">发起人 ${esc(c.owner)} · ${esc(c.createdAt)}</span>
+    </div>
+    <div class="content">${esc(c.desc)}</div>
+    <div class="row" style="margin-top:8px">
+      <span class="kv">成员 <b>${c.members.length}</b></span>
+      ${c.joined ? `<span class="badge green">已加入</span>` : ""}
+    </div>
+    <div class="actions">
+      <button class="btn-pri btn-xs" data-a="open">${c.joined ? "进入" : "查看"}</button>
+      ${c.joined ? "" : '<button class="btn-ghost btn-xs" data-a="join">加入合作</button>'}
+    </div>`;
+  d.querySelector('[data-a="open"]').onclick = () => showCoop(c.id);
+  const j = d.querySelector('[data-a="join"]');
+  if (j) j.onclick = async () => {
+    if (!(await ensureName())) return;
+    const r = await api("/api/coops/" + c.id + "/join", {method:"POST", body:"{}"});
+    if (!r.ok) { toast(r.msg || "加入失败"); return; }
+    toast("已加入，现在能看到内部消息和文件了");
+    refresh();
+  };
+  return d;
+}
+
+async function showCoop(id) {
+  const r = await api("/api/coops/" + id);
+  if (!r.ok) { toast(r.msg || "加载失败"); return; }
+  const c = r.coop;
+  openModal("#mCoop");
+  $("#mCoopBox").innerHTML = `
+    <h3>${esc(c.title)}</h3>
+    <div class="content">${esc(c.desc)}</div>
+    <div class="kv" style="margin-top:8px">成员：${c.members.map((m) => esc(m.name)).join("、")}</div>
+    ${c.joined ? `
+      <h3 style="margin-top:14px;font-size:14px">消息（仅加入者可见）</h3>
+      <div>${(c.messages || []).map((m) =>
+        `<div class="cmt"><b>${esc(m.author)}</b> <span class="muted">${esc(m.createdAt)}</span><br>${esc(m.text)}</div>`
+      ).join("") || '<div class="empty">还没有消息。</div>'}</div>
+      <div class="row" style="margin-top:8px">
+        <input class="grow" id="coopMsg" placeholder="说点什么…" maxlength="4000">
+        <button class="btn-pri btn-xs" id="coopSend">发送</button>
+      </div>
+      <h3 style="margin-top:14px;font-size:14px">文件（仅加入者可见）</h3>
+      <div>${(c.files || []).map((f) =>
+        `<div class="cmt">⬇ <a href="/f/${f.id}" download>${esc(f.name)}</a>（${fmtSize(f.size)}，${esc(f.by)}）</div>`
+      ).join("") || '<div class="empty">还没有文件。</div>'}</div>
+      <div class="row" style="margin-top:8px">
+        <input type="file" id="coopFile">
+        <button class="btn-ghost btn-xs" id="coopUp">上传文件</button>
+      </div>` : `
+      <div class="muted" style="margin-top:10px">加入后才能查看消息和文件。</div>`}
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn-ghost" onclick="document.querySelector('#mCoop').classList.remove('on')">关闭</button>
+    </div>`;
+  const send = $("#coopSend");
+  if (send) send.onclick = async () => {
+    const t = $("#coopMsg").value.trim();
+    if (!t) return;
+    const rr = await api("/api/coops/" + id + "/message",
+      {method:"POST", body: JSON.stringify({text: t})});
+    if (!rr.ok) { toast(rr.msg || "发送失败"); return; }
+    showCoop(id);
+  };
+  const up = $("#coopUp");
+  if (up) up.onclick = async () => {
+    const f = $("#coopFile").files[0];
+    if (!f) { toast("先选一个文件"); return; }
+    const rr = await fetch("/api/coops/" + id + "/file?name=" + encodeURIComponent(f.name), {
+      method: "PUT",
+      headers: {"X-Uid": ME.uid, "X-Secret": ME.secret},
+      body: f,
+    });
+    const j = await rr.json().catch(() => ({ok:false}));
+    if (!j.ok) { toast(j.msg || "上传失败"); return; }
+    toast("文件已上传");
+    showCoop(id);
+  };
+}
+
+// ---------- 发布弹窗 ----------
+let newKind = "dev";
+let editSrv = null;
+function openNew(kind, srv) {
+  newKind = kind;
+  editSrv = srv || null;
+  $("#mNewTitle").textContent =
+    kind === "servers" ? (srv ? "编辑服务器宣传" : "宣传我的 MC 服务器")
+    : kind === "resource" ? "上传资源（KCL玩家开发）"
+    : kind === "community" ? "发布到 MC 社区"
+    : kind === "coops" ? "发起合作"
+    : kind === "suggestion" ? "提交建议"
+    : "发布到开发空间";
+  $("#fSrv").style.display = kind === "servers" ? "" : "none";
+  $("#fFile").style.display = (kind === "community" || kind === "resource") ? "" : "none";
+  $("#fileHint").textContent = "";
+  const isEdit = !!srv;
+  $("#nTitle").value = isEdit ? "" : "";
+  $("#nContent").value = "";
+  if (srv) {
+    $("#nSrvName").value = srv.name; $("#nSrvType").value = srv.type;
+    $("#nSrvVer").value = srv.version; $("#nSrvMax").value = srv.maxPlayers || 0;
+    $("#nSrvPack").value = srv.modpack || ""; $("#nSrvImg").value = srv.image || "";
+    $("#nSrvSlogan").value = srv.slogan || ""; $("#nSrvMods").value = srv.mods.join("\n");
+    $("#nSrvAddr").value = srv.address || ""; $("#nSrvQQ").value = srv.qqGroup || "";
+    $("#nSrvKuke").value = srv.kukeGroup || "";
+    $("#nSrvApprove").checked = !!srv.needApprove;
+    $("#nSrvMarkon").checked = !!srv.markon;
+    $("#nTitle").value = srv.name;
+    $("#nContent").value = srv.slogan || "";
+  } else {
+    ["nSrvName","nSrvType","nSrvVer","nSrvPack","nSrvImg","nSrvSlogan","nSrvMods",
+     "nSrvAddr","nSrvQQ","nSrvKuke"].forEach((id) => { $("#" + id).value = ""; });
+    $("#nSrvMax").value = 20;
+    $("#nSrvApprove").checked = true;
+    $("#nSrvMarkon").checked = false;
+  }
+  openModal("#mNew");
+}
+$("#btnNew").onclick = async () => {
+  if (TAB === "admin") return;
+  if (!(await ensureName())) return;
+  openNew(TAB === "servers" ? "servers" : TAB);
+};
+$("#nCancel").onclick = () => closeModal("#mNew");
+$("#nOk").onclick = async () => {
+  const body = {
+    kind: newKind === "coops" ? "community" : newKind,
+    title: $("#nTitle").value.trim(),
+    content: $("#nContent").value.trim(),
+  };
+  let url = "/api/posts";
+  if (newKind === "servers") {
+    body.name = $("#nSrvName").value.trim();
+    body.stype = $("#nSrvType").value.trim();
+    body.version = $("#nSrvVer").value.trim();
+    body.maxPlayers = parseInt($("#nSrvMax").value, 10) || 0;
+    body.image = $("#nSrvImg").value.trim();
+    body.slogan = $("#nSrvSlogan").value.trim();
+    body.mods = $("#nSrvMods").value.split("\n").map((s) => s.trim()).filter(Boolean);
+    body.modpack = $("#nSrvPack").value.trim();
+    body.address = $("#nSrvAddr").value.trim();
+    body.qqGroup = $("#nSrvQQ").value.trim();
+    body.kukeGroup = $("#nSrvKuke").value.trim();
+    body.needApprove = $("#nSrvApprove").checked;
+    body.markon = $("#nSrvMarkon").checked;
+    if (!body.name) { toast("服务器名称不能为空"); return; }
+    url = editSrv ? "/api/servers/" + editSrv.id + "/save" : "/api/servers";
+  }
+  if (newKind === "coops") {
+    if (!body.title) { toast("合作标题不能为空"); return; }
+    const r0 = await api("/api/coops", {method:"POST", body: JSON.stringify({
+      title: body.title, desc: body.content})});
+    if (!r0.ok) { toast(r0.msg || "创建失败"); return; }
+    closeModal("#mNew"); toast("合作已发起"); refresh(); return;
+  }
+  const r = await api(url, {method:"POST", body: JSON.stringify(body)});
+  if (!r.ok) { toast(r.msg || "发布失败"); return; }
+  // 附件
+  const f = $("#nFile").files[0];
+  if (f && r.id) {
+    $("#fileHint").textContent = "正在上传附件…";
+    const rr = await fetch("/api/posts/" + r.id + "/file?name=" + encodeURIComponent(f.name), {
+      method: "PUT",
+      headers: {"X-Uid": ME.uid, "X-Secret": ME.secret},
+      body: f,
+    });
+    const j = await rr.json().catch(() => ({ok:false}));
+    if (!j.ok) toast("附件上传失败：" + (j.msg || ""));
+  }
+  closeModal("#mNew");
+  toast("已发布");
+  refresh();
+};
+
+// ---------- 加载 ----------
+async function loadPosts(kind) {
+  const r = await api("/api/posts?kind=" + kind + (ADMIN ? "&admin=1" : ""));
+  renderList(r.ok ? r.list : [], kind);
+}
+async function loadServers() {
+  const qs = new URLSearchParams();
+  ["type","ver","kclver","mod","modmode","q","markon"].forEach((k) => {
+    const el = $("#flt_" + k);
+    if (el && el.value) qs.set(k, el.value);
+  });
+  const r = await api("/api/servers?" + qs.toString());
+  SRV_CACHE = r.ok ? r.list : [];
+  const box = $("#list");
+  box.innerHTML = "";
+  const bar = document.createElement("div");
+  bar.className = "card";
+  bar.innerHTML = `
+    <div class="row">
+      <input class="grow" id="flt_q" placeholder="关键词（名称 / 宣传语）" style="max-width:180px" value="${esc((window._flt&&window._flt.q)||"")}">
+      <input class="grow" id="flt_type" placeholder="类型" style="max-width:110px" value="${esc((window._flt&&window._flt.type)||"")}">
+      <input class="grow" id="flt_ver" placeholder="指定 MC 版本" style="max-width:120px" value="${esc((window._flt&&window._flt.ver)||"")}">
+      <input class="grow" id="flt_kclver" placeholder="KCL 已下载版本（逗号分隔）" style="max-width:170px" value="${esc((window._flt&&window._flt.kclver)||"")}">
+      <input class="grow" id="flt_mod" placeholder="mod 过滤" style="max-width:110px" value="${esc((window._flt&&window._flt.mod)||"")}">
+      <select id="flt_modmode" style="max-width:96px">
+        <option value="whitelist">白名单</option>
+        <option value="blacklist">黑名单</option>
+      </select>
+      <label class="row" style="gap:4px;font-size:12.5px"><input type="checkbox" id="flt_markon" style="width:auto">markon</label>
+      <button class="btn-pri btn-xs" id="fltGo">搜索</button>
+      <button class="btn-ghost btn-xs" id="fltAll">全部</button>
+    </div>
+    <div class="muted" style="margin-top:6px">不填任何条件 = 全部；结果按最后修改时间排序。</div>`;
+  box.appendChild(bar);
+  const sel = bar.querySelector("#flt_modmode");
+  sel.value = (window._flt && window._flt.modmode) || "whitelist";
+  const mk = bar.querySelector("#flt_markon");
+  mk.checked = !!(window._flt && window._flt.markon);
+  bar.querySelector("#fltGo").onclick = () => { saveFlt(bar); loadServers(); };
+  bar.querySelector("#fltAll").onclick = () => {
+    window._flt = {}; loadServers();
+  };
+  bar.querySelectorAll("input[id^=flt_],select[id^=flt_]").forEach((el) => {
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") { saveFlt(bar); loadServers(); } });
+  });
+  if (!SRV_CACHE.length) {
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = "没有匹配的服务器。";
+    box.appendChild(e);
+    return;
+  }
+  SRV_CACHE.forEach((s) => box.appendChild(serverCard(s)));
+}
+function saveFlt(bar) {
+  window._flt = {
+    q: bar.querySelector("#flt_q").value.trim(),
+    type: bar.querySelector("#flt_type").value.trim(),
+    ver: bar.querySelector("#flt_ver").value.trim(),
+    kclver: bar.querySelector("#flt_kclver").value.trim(),
+    mod: bar.querySelector("#flt_mod").value.trim(),
+    modmode: bar.querySelector("#flt_modmode").value,
+    markon: bar.querySelector("#flt_markon").checked ? "1" : "",
+  };
+}
+
+async function loadCoops() {
+  const r = await api("/api/coops");
+  const box = $("#list");
+  box.innerHTML = "";
+  const items = r.ok ? r.list : [];
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">还没有合作，点「✎ 发布」发起一个吧。</div>';
+    return;
+  }
+  items.forEach((c) => box.appendChild(coopCard(c)));
+}
+
+function refresh() {
+  if (TAB === "servers") loadServers();
+  else if (TAB === "coops") loadCoops();
+  else loadPosts(TAB);
+}
+
+// ---------- 模态 / 事件 ----------
+function openModal(sel) { $(sel).classList.add("on"); }
+function closeModal(sel) { $(sel).classList.remove("on"); }
+document.querySelectorAll(".modal").forEach((m) =>
+  m.addEventListener("click", (e) => { if (e.target === m) m.classList.remove("on"); }));
+
+$("#btnWho").onclick = async () => {
+  await ensureName();
+};
+$("#btnAdmin").onclick = adminLogin;
+$("#btnMode").onclick = () => {
+  ADMIN_MODE = !ADMIN_MODE;
+  localStorage.setItem("kcl.site.adminMode", ADMIN_MODE ? "1" : "0");
+  applyAdminUI();
+  if (ADMIN_MODE) switchTab("admin");
+  else switchTab("dev");
+};
+
+(async function init() {
+  renderWho();
+  // 恢复管理员登录状态（cookie 会话 1 天有效）
+  try {
+    const st = await api("/api/state");
+    ADMIN = !!(st && st.logged);
+  } catch (e) { ADMIN = false; }
+  applyAdminUI();
+  switchTab("dev");
+})();
+</script>
+</body>
+</html>
