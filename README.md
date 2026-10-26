@@ -8,7 +8,18 @@
 
 ## ⬇️ 下载
 
-点击下方文件直接下载最新版本：
+### 最新版本（推荐）：Releases 发行版
+
+每个版本的安装包都发布在 [Releases](https://github.com/hujiao233/KCL-Minecraft-Launcher-Project/releases) 页面，包含：
+
+| 文件 | 说明 |
+| --- | --- |
+| `[kc studio]脆冰启动器.exe` | 完整版（约 27 MB），内置便携 Python 运行环境，解压即用 |
+| `压缩启动器.exe` | 精简版（约 9.6 MB），首次运行时自动下载运行环境并自我补全 |
+| `启动器网页端.html` | 单文件网页版启动器（离线可用） |
+| `脆冰启动器-源码-vX.Y.Z.zip` | 完整源码包 |
+
+### 仓库直链（旧版本）
 
 - [\[kcstudio\]脆冰启动器.exe](./%5Bkcstudio%5D脆冰启动器.exe) （约 9.9 MB）
 
@@ -25,6 +36,21 @@ curl -L -o "脆冰启动器.exe" "https://raw.githubusercontent.com/hujiao233/KC
 3. 在启动器内选择游戏版本并启动
 
 > 💡 建议 Windows 10 / 11 系统，并已安装 Java 运行环境。
+
+## 🛠 从源码运行
+
+本机没有 Python 也能一键跑起来：
+
+1. 双击 `启动源码.bat`（会自动调用 `prepare_python.ps1` 下载约 12 MB 的便携 Python 到 `runtime/` 并安装依赖）
+2. 已装 Python 的用户可直接 `pip install -r requirements.txt` 后 `python main.py`
+
+打包命令：
+
+```bash
+python build_exe.py          # 生成完整版 [kc studio]脆冰启动器.exe
+python build_exe.py --slim   # 生成 压缩启动器.exe（自我增肥版）
+python build_web.py          # 生成 启动器网页端.html
+```
 
 ## ℹ️ 说明
 
