@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>脆冰更新服务端</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f8fc4'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --accent:#2f8fc4; --accent-2:#8fd8ff; --ice-1:#dff1fb; --ice-2:#bfe4f7;
+    --bg:#f2f8fc; --panel:#ffffff; --deep:#14384f; --text:#173a4f;
+    --muted:#6b8798; --line:rgba(47,143,196,.18); --radius:12px;
+    --shadow:0 6px 20px rgba(20,60,90,.10);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.6 "Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 60px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow)}
+  h1,h2,h3{margin:0}
+  .top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  .logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--accent-2),var(--accent));
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:17px}
+  .top h1{font-size:19px}
+  .sub{color:var(--muted);font-size:12.5px}
+  .mv{margin-left:auto;text-align:right}
+  .mv code{background:var(--ice-1);padding:5px 9px;border-radius:8px;font-size:12.5px;
+    display:inline-block;color:var(--deep);word-break:break-all}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .grow{flex:1;min-width:180px}
+  input,textarea,select{width:100%;padding:9px 11px;border:1px solid var(--line);
+    border-radius:9px;background:#fff;color:var(--text);font:inherit;outline:none}
+  input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,143,196,.12)}
+  textarea{resize:vertical;min-height:100px;line-height:1.7}
+  label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 4px}
+  button{cursor:pointer;border:1px solid transparent;border-radius:9px;padding:8px 14px;
+    font:inherit;background:var(--accent);color:#fff;transition:.15s}
+  button:hover{filter:brightness(1.06)}
+  button.ghost{background:#fff;border-color:var(--line);color:var(--text)}
+  button.ghost:hover{border-color:var(--accent);color:var(--accent)}
+  button.danger{background:#e05a52}
+  button.sm{padding:5px 10px;font-size:12.5px;border-radius:8px}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  .grid{display:grid;grid-template-columns:322px 1fr;gap:16px;align-items:start}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .pad{padding:16px}
+  .list{max-height:70vh;overflow:auto}
+  .item{padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;
+    cursor:pointer;background:#fff;transition:.15s}
+  .item:hover{border-color:var(--accent-2);background:var(--ice-1)}
+  .item.on{border-color:var(--accent);background:var(--ice-1);box-shadow:inset 3px 0 0 var(--accent)}
+  .item .v{font-weight:700}
+  .item .t{color:var(--muted);font-size:12.5px}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;margin-left:6px;
+    background:var(--ice-2);color:var(--deep)}
+  .tag.pub{background:var(--accent);color:#fff}
+  .files{border-top:1px dashed var(--line);margin-top:14px;padding-top:12px}
+  .drop{border:2px dashed var(--line);border-radius:11px;padding:16px;text-align:center;
+    color:var(--muted);background:#fbfdff}
+  .drop.over{border-color:var(--accent);background:var(--ice-1);color:var(--accent)}
+  .fl{margin-top:10px}
+  .fl div{display:flex;gap:8px;align-items:center;padding:6px 9px;border:1px solid var(--line);
+    border-radius:8px;margin-bottom:6px;font-size:12.5px;background:#fff}
+  .fl b{font-weight:600;word-break:break-all}
+  .fl span{margin-left:auto;color:var(--muted);white-space:nowrap}
+  pre{background:#0f2431;color:#cfe9fb;padding:13px;border-radius:10px;overflow:auto;
+    font-size:12.5px;line-height:1.65;max-height:300px;margin:10px 0 0}
+  .hint{color:var(--muted);font-size:12px;margin-top:6px}
+  .toast{position:fixed;left:50%;top:20px;transform:translateX(-50%);z-index:99;
+    background:var(--deep);color:#fff;padding:10px 18px;border-radius:10px;opacity:0;
+    transition:.25s;pointer-events:none;font-size:13px}
+  .toast.on{opacity:1;top:26px}
+  .toast.bad{background:#c0413a}
+  .login{max-width:390px;margin:9vh auto;padding:24px}
+  .login h2{font-size:17px;margin-bottom:4px}
+  .mt{margin-top:14px}
+  .kv{display:flex;gap:6px;align-items:center;margin-top:8px}
+  .kv input{flex:1}
+  .sec{font-size:13.5px;font-weight:700;margin:16px 0 2px;color:var(--deep)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app" hidden>
+  <div class="top">
+    <div class="logo">冰</div>
+    <div>
+      <h1>脆冰更新服务端 <span class="sub" id="ver"></span></h1>
+      <div class="sub">发布版本 · 写更新日志 · 上传文件 —— 启动器每次启动会来检查</div>
+    </div>
+    <div class="mv">
+      <div class="sub">清单地址（填到启动器「设置 → 更新 → 更新地址」）</div>
+      <code id="mfUrl">-</code>
+      <div class="row" style="justify-content:flex-end;margin-top:6px">
+        <button class="ghost sm" id="btnCopy">复制地址</button>
+        <button class="ghost sm" id="btnHealth">连通测试</button>
+        <button class="ghost sm" id="btnLogout">退出</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card pad">
+      <div class="row" style="margin-bottom:10px">
+        <h3 style="font-size:14px">版本列表</h3>
+        <button class="sm grow" style="flex:0 0 auto;margin-left:auto" id="btnNew">+ 新建版本</button>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="hint" id="curHint"></div>
+    </div>
+
+    <div class="card pad">
+      <h3 style="font-size:14px" id="formTitle">编辑版本</h3>
+      <input type="hidden" id="fId">
+      <div class="row">
+        <div class="grow"><label>版本号（要比启动器当前版本大才会提示更新）</label>
+          <input id="fVersion" placeholder="例如 1.0.3"></div>
+        <div class="grow"><label>标题</label>
+          <input id="fTitle" placeholder="例如 启动逻辑修复"></div>
+      </div>
+      <label>更新日志（一行一条，会自动拼进说明里）</label>
+      <textarea id="fItems" placeholder="修复：点启动报错&#10;新增：某某功能"></textarea>
+      <label>详细说明（可选，纯文本）</label>
+      <textarea id="fNotes" style="min-height:76px" placeholder="这次更新想对用户说的话"></textarea>
+      <label>发布页链接（可选，点了「下载新版本」会打开它）</label>
+      <input id="fUrl" placeholder="https://...">
+
+      <div class="files">
+        <div class="sec">要下发的文件</div>
+        <div class="hint">路径 = 文件在启动器目录下的位置，例如 <code>main.py</code>、<code>ui/index.html</code>。
+          服务端关闭也不会影响启动器运行，所以这里只放真的需要更新的文件。</div>
+        <div class="row mt">
+          <input class="grow" id="fRel" placeholder="main.py">
+          <input type="file" id="fPick" class="grow" style="flex:0 0 210px;padding:6px">
+          <button class="sm" id="btnUpload">上传</button>
+        </div>
+        <div class="drop mt" id="drop">把文件拖到这里也能上传（自动用文件名当路径）</div>
+        <div class="fl" id="fl"></div>
+      </div>
+
+      <div class="row mt">
+        <button id="btnSave">保存</button>
+        <button class="ghost" id="btnPublish">设为最新版（发布）</button>
+        <button class="ghost" id="btnUnpublish">取消发布</button>
+        <button class="danger" id="btnDelete" style="margin-left:auto">删除版本</button>
+      </div>
+      <div class="sec mt">清单预览（启动器看到的就是这个）</div>
+      <pre id="mfPreview">{}</pre>
+      <label style="margin-top:14px">对外地址前缀（部署到服务器时填，例如 http://1.2.3.4:8756；留空按访问地址自动生成）</label>
+      <div class="kv"><input id="fBase" placeholder="留空 = 自动"><button class="ghost sm" id="btnBase">保存</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="card pad login" id="login">
+  <h2>脆冰更新服务端</h2>
+  <div class="sub">请输入管理口令（服务端启动时会在窗口里显示，也存在 update_data/token.txt）</div>
+  <label class="mt">管理口令</label>
+  <input id="inToken" type="password" placeholder="口令" autocomplete="off">
+  <button class="mt" style="width:100%" id="btnLogin">进入后台</button>
+  <div class="hint" id="lgHint"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  var TOKEN = localStorage.getItem("cbupd_token") || "";
+  var DATA = { list: [], cur: "", base: "" };
+  var sel = null;
+  var $ = function (s) { return document.querySelector(s); };
+  var errs = [];
+
+  function toast(msg, bad) {
+    var t = $("#toast");
+    t.textContent = msg;
+    t.className = "toast on" + (bad ? " bad" : "");
+    setTimeout(function () { t.className = "toast" + (bad ? " bad" : ""); }, 2400);
+  }
+  function api(path, opt) {
+    opt = opt || {};
+    var h = { "Content-Type": "application/json" };
+    if (TOKEN) h["X-Token"] = TOKEN;
+    return fetch(path, {
+      method: opt.method || (opt.body ? "POST" : "GET"),
+      headers: opt.headers || h,
+      body: opt.body
+    }).then(function (r) {
+      return r.json().catch(function () { return { ok: false, msg: "HTTP " + r.status }; });
+    });
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function fsize(n) {
+    n = n || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  // ---------- 登录 ----------
+  function tryEnter() {
+    return api("/api/state").then(function (d) {
+      if (d.ok && d.logged) { enter(d); return true; }
+      return false;
+    }).catch(function () { return false; });
+  }
+  function enter(st) {
+    $("#login").hidden = true;
+    $("#app").hidden = false;
+    $("#mfUrl").textContent = location.origin + "/api/manifest";
+    $("#fBase").value = (st && st.base) || "";
+    DATA.base = (st && st.base) || "";
+    reload();
+  }
+  $("#btnLogin").addEventListener("click", function () {
+    var t = $("#inToken").value.trim();
+    if (!t) { $("#lgHint").textContent = "请输入口令"; return; }
+    TOKEN = t;
+    api("/api/login", { body: JSON.stringify({ token: t }) }).then(function (r) {
+      if (!r.ok) { $("#lgHint").textContent = r.msg || "口令不对"; TOKEN = ""; return; }
+      localStorage.setItem("cbupd_token", t);
+      $("#lgHint").textContent = "";
+      enter(null);
+    }).catch(function (e) { $("#lgHint").textContent = "连不上服务：" + e; });
+  });
+  $("#inToken").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") $("#btnLogin").click();
+  });
+  $("#btnLogout").addEventListener("click", function () {
+    localStorage.removeItem("cbupd_token");
+    location.reload();
+  });
+
+  // ---------- 列表 ----------
+  function reload(keepSel) {
+    return api("/api/releases").then(function (d) {
+      if (!d.ok) { toast(d.msg || "读取失败", true); return; }
+      DATA.list = d.list || [];
+      renderList();
+      var id = keepSel ? sel : null;
+      if (id == null) {
+        if (DATA.list.length) id = DATA.list[0].id; else id = 0;
+      }
+      select(id);
+    }).catch(function (e) { toast("读取失败：" + e, true); });
+  }
+  function renderList() {
+    var box = $("#list");
+    box.innerHTML = "";
+    if (!DATA.list.length) {
+      box.innerHTML = '<div class="hint">还没有版本，点右上角「+ 新建版本」。</div>';
+      $("#curHint").textContent = "当前没有发布任何版本，启动器检查更新时不会提示。";
+      return;
+    }
+    DATA.list.forEach(function (r) {
+      var d = document.createElement("div");
+      d.className = "item" + (r.id === sel ? " on" : "");
+      d.setAttribute("data-id", r.id);
+      d.innerHTML = '<div class="v">' + esc(r.version) +
+        (r.isCurrent ? '<span class="tag pub">最新版</span>' :
+          (r.published ? '<span class="tag">已发布</span>' : '')) + '</div>' +
+        '<div class="t">' + esc(r.title || "（无标题）") + '</div>' +
+        '<div class="t">' + (r.fileCount ? (r.fileCount + " 个文件 · " + fsize(r.totalSize)) : "无文件") +
+        ' · ' + esc(r.createdAt) + '</div>';
+      d.addEventListener("click", function () { select(r.id); });
+      box.appendChild(d);
+    });
+    var cur = DATA.list.filter(function (r) { return r.isCurrent; })[0];
+    $("#curHint").textContent = cur
+      ? ("启动器现在会检查到版本 " + cur.version)
+      : "还没有设为最新版，启动器不会提示更新。";
+  }
+  function select(id) {
+    sel = id;
+    renderList();
+    var r = DATA.list.filter(function (x) { return x.id === id; })[0];
+    if (!r) {
+      $("#fId").value = ""; $("#fVersion").value = ""; $("#fTitle").value = "";
+      $("#fItems").value = ""; $("#fNotes").value = ""; $("#fUrl").value = "";
+      $("#fl").innerHTML = ""; $("#mfPreview").textContent = "{}";
+      $("#formTitle").textContent = "新建版本";
+      return;
+    }
+    $("#formTitle").textContent = "编辑版本 · " + r.version;
+    $("#fId").value = r.id;
+    $("#fVersion").value = r.version;
+    $("#fTitle").value = r.title;
+    $("#fItems").value = (r.items || []).join("\n");
+    $("#fNotes").value = r.notes;
+    $("#fUrl").value = r.url;
+    renderFiles(r);
+    preview();
+  }
+  function renderFiles(r) {
+    var box = $("#fl");
+    box.innerHTML = "";
+    if (!r.files || !r.files.length) {
+      box.innerHTML = '<div class="hint">还没有上传文件。没有文件时只提示有更新，不会自动下载替换。</div>';
+      return;
+    }
+    r.files.forEach(function (f) {
+      var d = document.createElement("div");
+      d.innerHTML = '<b>' + esc(f.rel) + '</b><span>' + fsize(f.size) + '</span>';
+      var del = document.createElement("button");
+      del.className = "ghost sm";
+      del.textContent = "删除";
+      del.addEventListener("click", function () {
+        api("/api/releases/" + r.id + "/files/remove",
+          { body: JSON.stringify({ fileId: f.id }) }).then(function (res) {
+            if (!res.ok) { toast(res.msg || "删除失败", true); return; }
+            toast("已删除");
+            reload(true);
+          });
+      });
+      d.appendChild(del);
+      box.appendChild(d);
+    });
+  }
+
+  // ---------- 编辑动作 ----------
+  function body() {
+    return {
+      version: $("#fVersion").value.trim(),
+      title: $("#fTitle").value.trim(),
+      notes: $("#fNotes").value,
+      url: $("#fUrl").value.trim(),
+      items: $("#fItems").value.split("\n").map(function (s) { return s.trim(); })
+        .filter(function (s) { return !!s; })
+    };
+  }
+  $("#btnNew").addEventListener("click", function () {
+    var v = prompt("新版本号（要比启动器当前版本大）", "");
+    if (!v) return;
+    api("/api/releases", { body: JSON.stringify({ version: v.trim() }) }).then(function (r) {
+      if (!r.ok) { toast(r.msg || "新建失败", true); return; }
+      toast("已新建");
+      reload().then(function () { select(r.id); });
+    });
+  });
+  $("#btnSave").addEventListener("click", function () {
+    var b = body();
+    if (!b.version) { toast("版本号不能为空", true); return; }
+    var id = $("#fId").value;
+    api(id ? ("/api/releases/" + id) : "/api/releases",
+      { body: JSON.stringify(b) }).then(function (r) {
+        if (!r.ok) { toast(r.msg || "保存失败", true); return; }
+        toast("已保存");
+        reload().then(function () { select(r.id); });
+      });
+  });
+  $("#btnPublish").addEventListener("click", function () {
+    var id = $("#fId").value;
+    if (!id) { toast("先选一个版本", true); return; }
+    api("/api/releases/" + id + "/publish", { body: "{}" }).then(function (r) {
+      toast(r.ok ? "已设为最新版" : (r.msg || "发布失败"), !r.ok);
+      if (r.ok) reload(true);
+    });
+  });
+  $("#btnUnpublish").addEventListener("click", function () {
+    var id = $("#fId").value;
+    if (!id) return;
+    api("/api/releases/" + id + "/unpublish", { body: "{}" }).then(function (r) {
+      toast(r.ok ? "已取消发布" : (r.msg || "失败"), !r.ok);
+      if (r.ok) reload(true);
+    });
+  });
+  $("#btnDelete").addEventListener("click", function () {
+    var id = $("#fId").value;
+    if (!id) return;
+    if (!confirm("删除这个版本和它的文件？此操作不可恢复。")) return;
+    api("/api/releases/" + id + "/delete", { body: "{}" }).then(function (r) {
+      toast(r.ok ? "已删除" : (r.msg || "删除失败"), !r.ok);
+      if (r.ok) reload();
+    });
+  });
+  $("#btnBase").addEventListener("click", function () {
+    api("/api/config", { body: JSON.stringify({ baseUrl: $("#fBase").value.trim() }) })
+      .then(function (r) {
+        toast(r.ok ? "已保存" : (r.msg || "保存失败"), !r.ok);
+        if (r.ok) preview();
+      });
+  });
+  $("#btnCopy").addEventListener("click", function () {
+    var url = location.origin + "/api/manifest";
+    try {
+      navigator.clipboard.writeText(url);
+      toast("已复制清单地址");
+    } catch (e) {
+      prompt("手动复制：", url);
+    }
+  });
+  $("#btnHealth").addEventListener("click", function () {
+    api("/api/health").then(function (r) { toast(r.ok ? "服务正常" : "异常", !r.ok); });
+  });
+
+  // ---------- 上传 ----------
+  function upload(file, rel) {
+    var id = $("#fId").value;
+    if (!id) { toast("先选一个版本", true); return; }
+    rel = (rel || $("#fRel").value.trim() || file.name).trim();
+    if (!rel) { toast("请填文件路径", true); return; }
+    if (rel.replace(/\\/g, "/").indexOf("..") >= 0) { toast("路径不能含 ..", true); return; }
+    $("#btnUpload").disabled = true;
+    fetch("/api/releases/" + id + "/files?rel=" + encodeURIComponent(rel), {
+      method: "PUT",
+      headers: { "X-Token": TOKEN, "Content-Type": "application/octet-stream" },
+      body: file
+    }).then(function (r) {
+      return r.json().catch(function () { return { ok: false, msg: "HTTP " + r.status }; });
+    }).then(function (r) {
+      $("#btnUpload").disabled = false;
+      if (!r.ok) { toast(r.msg || "上传失败", true); return; }
+      toast("已上传：" + r.rel);
+      $("#fRel").value = "";
+      reload(true);
+    }).catch(function (e) {
+      $("#btnUpload").disabled = false;
+      toast("上传失败：" + e, true);
+    });
+  }
+  $("#btnUpload").addEventListener("click", function () {
+    var f = $("#fPick").files[0];
+    if (!f) { toast("先选一个文件", true); return; }
+    upload(f, $("#fRel").value.trim() || f.name);
+    $("#fPick").value = "";
+  });
+  var dz = $("#drop");
+  ["dragenter", "dragover"].forEach(function (ev) {
+    dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove("over"); });
+  });
+  dz.addEventListener("drop", function (e) {
+    if (!e.dataTransfer.files.length) return;
+    upload(e.dataTransfer.files[0], "");
+  });
+
+  // ---------- 预览 ----------
+  function preview() {
+    var id = $("#fId").value;
+    if (!id) { $("#mfPreview").textContent = "{}"; return; }
+    fetch("/api/releases/" + id + "/manifest", { headers: { "X-Token": TOKEN } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        $("#mfPreview").textContent = d.ok
+          ? JSON.stringify(d.manifest, null, 2)
+          : (d.msg || "预览失败");
+      })
+      .catch(function (e) { $("#mfPreview").textContent = "预览失败：" + e; });
+  }
+  ["fVersion", "fTitle", "fItems", "fNotes", "fUrl"].forEach(function (k) {
+    $("#" + k).addEventListener("change", preview);
+  });
+
+  window.addEventListener("error", function (e) { errs.push(String(e.message)); });
+  tryEnter();
+})();
+</script>
+</body>
+</html>

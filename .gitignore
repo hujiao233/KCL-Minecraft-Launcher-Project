@@ -1,0 +1,28 @@
+# 便携运行环境（35 MB，第一次运行会自己下载）
+runtime/
+# 下载的 Java 运行时
+java/
+# Python 缓存与编译产物
+__pycache__/
+*.pyc
+*.pyo
+# 打包临时目录
+_build_tmp/
+_build_exe/
+_build_web/
+dist/
+build/
+*.spec
+# 运行时数据与日志
+logs/
+tmp/
+启动器日志.txt
+_port.txt
+_grow.json
+config.json
+accounts.json
+token.txt
+*.log
+# 编辑器
+.vscode/
+.idea/
