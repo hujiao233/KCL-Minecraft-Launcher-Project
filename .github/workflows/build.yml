@@ -23,6 +23,24 @@ jobs:
       - name: 编译全部源文件
         run: python -m compileall -q -x '(\.git|runtime|_build_tmp|_build_exe|_build_web|dist|build)' .
 
+  test:
+    name: 单元测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装测试依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: 运行测试
+        run: python -m pytest tests -q
+
   build:
     name: 打包 Windows 启动器
     runs-on: windows-latest

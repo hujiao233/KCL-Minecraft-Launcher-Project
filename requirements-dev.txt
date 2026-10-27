@@ -1,0 +1,2 @@
+# 仅开发 / 测试需要，打包用 requirements.txt
+pytest>=8.0
