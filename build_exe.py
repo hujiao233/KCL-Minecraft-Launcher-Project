@@ -24,6 +24,12 @@ import zipfile
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
+# CI 的 Windows runner 默认 cp1252，打印中文会直接 UnicodeEncodeError
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # noqa: BLE001
+    pass
 RUNTIME_DIR = os.path.join(BASE_DIR, "runtime")
 SKIP_DIRS = {"__pycache__", "bin", "include", "libs", "Tools", "tests", "test"}
 SKIP_EXT = {".pyc", ".pyo", ".pdb", ".lib", ".a", ".chm"}
