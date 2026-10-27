@@ -14,10 +14,12 @@
 
 | 文件 | 说明 |
 | --- | --- |
-| `[kc studio]脆冰启动器.exe` | 完整版（约 42 MB），内置便携 Python 运行环境，解压即用 |
-| `压缩启动器.exe` | 精简版（约 10 MB），首次运行时自动下载运行环境并自我补全 |
+| `CuibingLauncher-vX.Y.Z-full.exe` | 完整版（约 42 MB），内置便携 Python 运行环境，解压即用 |
+| `CuibingLauncher-vX.Y.Z.exe` | 精简版（约 10 MB），首次运行时自动下载运行环境并自我补全 |
 | `启动器网页端.html` | 单文件网页版启动器（离线可用） |
-| `脆冰启动器-源码-vX.Y.Z.zip` | 完整源码包 |
+| `CuibingLauncher-vX.Y.Z-source.zip` | 完整源码包 |
+
+> GitHub 会把附件名里的中文和方括号清掉（`[kc studio]脆冰启动器.exe` 传上去会变成 `kc.studio.exe`），所以附件一律用英文文件名；本地打包出来的中文名 exe 内容完全一样，只是文件名不同。
 
 ### 命令行下载
 
@@ -31,7 +33,7 @@ gh release download --repo hujiao233/KCL-Minecraft-Launcher-Project
 
 ## 🚀 使用方法
 
-1. 从 [Releases 页面](https://github.com/hujiao233/KCL-Minecraft-Launcher-Project/releases) 下载 `[kcstudio]脆冰启动器.exe`
+1. 从 [Releases 页面](https://github.com/hujiao233/KCL-Minecraft-Launcher-Project/releases) 下载 `CuibingLauncher-vX.Y.Z-full.exe`（完整版）或 `CuibingLauncher-vX.Y.Z.exe`（精简版）
 2. 双击运行（如遇 SmartScreen 提示，选择「仍要运行」）
 3. 在启动器内选择游戏版本并启动
 
