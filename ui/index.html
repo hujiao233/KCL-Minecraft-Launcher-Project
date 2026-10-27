@@ -1744,6 +1744,18 @@ body.booting .app { opacity: 0; }
   </div>
 </div>
 
+<!-- 更新后首次打开：只显示当前版本的更新内容 -->
+<div class="modal" id="updateNoticeModal" hidden>
+  <div class="modal-box" style="max-width:620px">
+    <div class="cmp-title" style="margin-bottom:10px">本次更新</div>
+    <div class="cmp-sub" style="margin:0 0 10px">这次版本带来的改动都在下面，看完点「知道了」就不会再自动弹出。</div>
+    <div class="cl-list" id="updateNoticeBox"></div>
+    <div class="modal-actions">
+      <button class="btn primary" id="btnUpdateNoticeClose">知道了</button>
+    </div>
+  </div>
+</div>
+
 <!-- 登录弹窗 -->
 <div class="modal" id="loginModal" hidden>
   <div class="modal-box" style="max-width:430px">
@@ -2951,6 +2963,8 @@ body.booting .app { opacity: 0; }
     pollSelfCheck();
     // 后台静默检查更新（失败也不提示，绝不阻塞启动）
     try { checkUpdate(true); } catch (e) {}
+    // 刚更新过的版本：首次打开时说明改了什么
+    try { maybeShowUpdateNotice(); } catch (e) {}
   }
 
   async function loadConfig() {
@@ -5029,6 +5043,57 @@ body.booting .app { opacity: 0; }
     }
   }
 
+  // ---------------- 更新后首次打开：弹出本版本的更新说明 ----------------
+  // 开场动画是一层遮罩，遮罩还在时弹窗会被它盖住，所以要等它结束
+  function afterSplash(fn) {
+    const step = (left) => {
+      const sp = document.getElementById("splash");
+      if (!sp) return setTimeout(fn, 60);                          // 遮罩已移除
+      if (sp.classList.contains("done")) return setTimeout(fn, 750); // 正在淡出
+      if (left <= 0) return setTimeout(fn, 60);                    // 兜底，不能一直等
+      setTimeout(() => step(left - 1), 200);
+    };
+    step(60);   // 最多等 12 秒
+  }
+
+  function markUpdateNoticeSeen(ver) {
+    if (state.config) state.config.changelogSeenVersion = ver;
+    try { post("/api/changelog/seen", { version: ver }); } catch (e) {}
+  }
+
+  async function maybeShowUpdateNotice() {
+    try {
+      const cfg = state.config || {};
+      const cur = cfg.appVersion || "";
+      const seen = cfg.changelogSeenVersion || "";
+      if (!cur || cur === seen) return;                        // 这个版本已经看过了
+
+      const r = await api("/api/changelog");
+      const logs = (r.ok && r.data && r.data.logs) || [];
+      const hit = logs.find((l) => (l.version || "") === cur);
+      // 本版本没写更新说明就不打扰用户
+      if (!hit || !(hit.items || []).length) return;
+
+      const m = $("#updateNoticeModal");
+      const box = $("#updateNoticeBox");
+      if (!m || !box) return;
+
+      box.innerHTML = `
+        <div class="cl-item">
+          <div class="cl-head">
+            <b>v${esc(hit.version || "")}</b>
+            <span>${esc(hit.date || "")}</span>
+            <i>${esc(hit.title || "")}</i>
+          </div>
+          <ul>${(hit.items || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+        </div>`;
+
+      // 弹出来那一刻就算看过：没点按钮直接关窗口也不会被反复打扰
+      markUpdateNoticeSeen(cur);
+      afterSplash(() => { m.hidden = false; });
+    } catch (e) {}
+  }
+
   function renderUpdate() {
     renderUpdateBtn();
     const bar = $("#updateBar");
@@ -6121,6 +6186,14 @@ body.booting .app { opacity: 0; }
     $$(".modal").forEach((m) => m.addEventListener("click", (e) => {
       if (e.target === m) m.hidden = true;
     }));
+
+    {
+      const closeBtn = $("#btnUpdateNoticeClose");
+      if (closeBtn) closeBtn.addEventListener("click", () => {
+        const m = $("#updateNoticeModal");
+        if (m) m.hidden = true;
+      });
+    }
 
     // 主页
     $("#btnLaunch").addEventListener("click", doLaunch);

@@ -1368,6 +1368,19 @@ def api_changelog():
     return ok({"current": core.APP_VERSION, "logs": CHANGELOG})
 
 
+@app.post("/api/changelog/seen")
+def api_changelog_seen():
+    """记录「这个版本的更新说明已经看过了」，下次启动不再自动弹出。
+
+    存在配置里而不是浏览器 localStorage：pywebview 每次用的本地端口可能变化，
+    localStorage 会跟着失效，导致同一次更新反复弹窗。
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    ver = str(body.get("version") or "").strip() or core.APP_VERSION
+    cfg = core.update({"changelogSeenVersion": ver})
+    return ok({"seen": cfg.get("changelogSeenVersion", "")})
+
+
 @app.get("/api/update/info")
 def api_update_info():
     cfg = core.load()
