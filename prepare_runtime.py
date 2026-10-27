@@ -98,7 +98,8 @@ def main():
         except Exception as e:  # noqa: BLE001
             log("失败：" + str(e))
     if got_pip:
-        subprocess.run([py, gp, "--no-warn-script-location", "--no-setuptools", "--no-wheel"],
+        # 新版 get-pip.py 已移除 --no-setuptools / --no-wheel，带上会直接报错
+        subprocess.run([py, gp, "--no-warn-script-location"],
                        cwd=RUNTIME, creationflags=NO_WINDOW)
         try:
             os.remove(gp)

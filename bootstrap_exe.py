@@ -26,10 +26,25 @@ MIRRORS = [
     "https://mirrors.aliyun.com/python/{v}/python-{v}-embed-amd64.zip",
     "https://www.python.org/ftp/python/{v}/python-{v}-embed-amd64.zip",
 ]
-PIP_URL = "https://mirrors.aliyun.com/pypi/get-pip.py"
-DEPS_MIRROR = "https://pypi.tuna.tsinghua.edu.cn/simple"
 PY_VER = "3.12.10"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# 依赖库：核心（缺了起不来）/ 桌面窗口 / 可选（装不上也能跑）
+DEPS_CORE = ["flask", "requests"]
+DEPS_UI = ["pywebview"]
+DEPS_OPT = ["mcauth3", "pillow"]
+# 装包镜像，按顺序轮换重试
+PYPI_MIRRORS = [
+    "https://pypi.tuna.tsinghua.edu.cn/simple",
+    "https://mirrors.aliyun.com/pypi/simple",
+    "https://mirrors.huaweicloud.com/repository/pypi/simple",
+    "https://pypi.org/simple",
+]
+GET_PIP_URLS = [
+    "https://mirrors.aliyun.com/pypi/get-pip.py",
+    "https://bootstrap.pypa.io/get-pip.py",
+]
+DEPS_DIR = os.path.join(KCL_DIR, "deps")   # 装不进 runtime 时的兜底目录
 
 
 # ---------------------------------------------------------------- 日志 / 提示
@@ -133,14 +148,80 @@ def payload_has_runtime() -> bool:
         return False
 
 
-def deps_ready(py) -> bool:
+def _run(py, args, timeout=600):
+    """跑一条 python 命令，输出全部收回（exe 无控制台，不收就永远看不到）。"""
+    return subprocess.run([py] + list(args), capture_output=True,
+                          timeout=timeout, creationflags=NO_WINDOW)
+
+
+def _tail(data, n=600):
+    s = (data or b"").decode("utf-8", "ignore").strip().replace("\r", "")
+    return s[-n:] if s else ""
+
+
+def _pth_file(py):
+    """便携版 Python 的 sys.path 配置文件（python3xx._pth）。"""
+    d = os.path.dirname(py)
     try:
-        r = subprocess.run(
-            [py, "-c", "import flask,requests,webview;print('ok')"],
-            capture_output=True, timeout=90, creationflags=NO_WINDOW)
+        for n in os.listdir(d):
+            if n.endswith("._pth"):
+                return os.path.join(d, n)
+    except OSError:
+        pass
+    return None
+
+
+def pth_add(py, entry) -> bool:
+    """往 ._pth 里补一行；普通 Python 没有 ._pth，返回 False。"""
+    p = _pth_file(py)
+    if not p:
+        return False
+    try:
+        with open(p, "r", encoding="utf-8", errors="ignore") as f:
+            lines = [l.strip() for l in f.read().splitlines()]
+        if any(l.lower() == entry.lower() for l in lines):
+            return True
+        with open(p, "a", encoding="utf-8") as f:
+            f.write("\n" + entry + "\n")
+        log("修补 %s：+%s" % (os.path.basename(p), entry))
+        return True
+    except OSError as e:  # noqa: BLE001
+        log("修补 %s 失败：%s" % (p, e))
+        return False
+
+
+def site_packages(py) -> str:
+    return os.path.join(os.path.dirname(py), "Lib", "site-packages")
+
+
+def ensure_site(py):
+    """便携版默认禁用 site，装好的库会 import 不到——这里补上再装包。"""
+    pth_add(py, "import site")
+    pth_add(py, "Lib\\site-packages")
+    try:
+        os.makedirs(site_packages(py), exist_ok=True)
+    except OSError:
+        pass
+
+
+def _can_import(py, code, extra_path=None) -> bool:
+    env = os.environ.copy()
+    if extra_path:
+        cur = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = extra_path + (os.pathsep + cur if cur else "")
+    try:
+        r = subprocess.run([py, "-c", code], capture_output=True, timeout=90,
+                           creationflags=NO_WINDOW, env=env)
         return r.returncode == 0 and b"ok" in ((r.stdout or b"") + (r.stderr or b""))
     except Exception:  # noqa: BLE001
         return False
+
+
+def deps_ready(py, extra_path=None) -> bool:
+    """核心依赖 flask / requests 是否可用（pywebview 由主程序自己补装）。"""
+    if extra_path is None and os.path.isdir(DEPS_DIR):
+        extra_path = DEPS_DIR
+    return _can_import(py, "import flask,requests;print('ok')", extra_path)
 
 
 def write_grow_request():
@@ -171,7 +252,7 @@ def _is_good_py(exe):
         return False
 
 
-def find_python(prefer_runtime=True):
+def find_python(prefer_runtime=True, quiet=False):
     """依序找：自带运行时 → 环境变量 → PATH → 常见安装位置。"""
     cands = []
     if prefer_runtime:
@@ -194,7 +275,8 @@ def find_python(prefer_runtime=True):
             cands.append(os.path.join(d, "python.exe"))
     for c in cands:
         if c and os.path.isfile(c) and _is_good_py(c):
-            log("使用 Python：" + c)
+            if not quiet:
+                log("使用 Python：" + c)
             return c
     return None
 
@@ -250,12 +332,9 @@ def ensure_python():
             with zipfile.ZipFile(tmp) as z:
                 z.extractall(RUNTIME_DIR)
             os.remove(tmp)
-            for f in os.listdir(RUNTIME_DIR):
-                if f.endswith("._pth"):
-                    with open(os.path.join(RUNTIME_DIR, f), "a", encoding="utf-8") as fh:
-                        fh.write("\nLib\\site-packages\nimport site\n")
             py = os.path.join(RUNTIME_DIR, "python.exe")
             if os.path.isfile(py):
+                ensure_site(py)      # 让 Lib\site-packages 生效
                 log("便携 Python 就绪")
                 return py, True
         except Exception as e:  # noqa: BLE001
@@ -265,47 +344,133 @@ def ensure_python():
     raise RuntimeError("自动下载 Python 失败：" + str(last))
 
 
-def ensure_deps(py):
-    """检查 flask/requests/pywebview，缺了才用国内镜像装。"""
-    code = "import flask,requests,webview;print('ok')"
+def pip_ok(py) -> bool:
     try:
-        r = subprocess.run([py, "-c", code], capture_output=True, timeout=90,
-                           creationflags=NO_WINDOW)
-        if r.returncode == 0 and b"ok" in ((r.stdout or b"") + (r.stderr or b"")):
-            log("依赖库已就绪")
-            return
-    except Exception:
-        pass
-    log("安装依赖库（flask / requests / pywebview …）")
-    chk = subprocess.run([py, "-m", "pip", "--version"], capture_output=True, timeout=90,
-                         creationflags=NO_WINDOW)
-    if chk.returncode != 0:
-        gp = os.path.join(RUNTIME_DIR, "get-pip.py")
+        return _run(py, ["-m", "pip", "--version"], timeout=90).returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def ensure_pip(py) -> bool:
+    """便携版 Python 没有 pip，先补上；补不上就没法装依赖。"""
+    if pip_ok(py):
+        return True
+    log("pip 不可用，尝试安装 pip…")
+    try:
+        r = _run(py, ["-m", "ensurepip", "--default-pip"], timeout=300)
+        if r.returncode == 0 and pip_ok(py):
+            log("pip 就绪（ensurepip）")
+            return True
+    except Exception as e:  # noqa: BLE001
+        log("ensurepip 失败：" + str(e))
+    for url in GET_PIP_URLS:
+        gp = os.path.join(os.path.dirname(py), "get-pip.py")
         try:
-            download(PIP_URL, gp)
-            subprocess.run([py, gp, "--no-warn-script-location"], timeout=300,
-                           creationflags=NO_WINDOW)
+            download(url, gp)
+            if os.path.getsize(gp) < 10000:
+                raise IOError("get-pip.py 不完整")
+            _run(py, [gp, "--no-warn-script-location"], timeout=300)
         except Exception as e:  # noqa: BLE001
-            log("get-pip 失败：" + str(e))
+            log("get-pip 失败（%s）：%s" % (url.split("/")[2], e))
         finally:
             try:
                 os.remove(gp)
-            except Exception:
+            except OSError:
                 pass
-    subprocess.run([py, "-m", "pip", "install", "-i", DEPS_MIRROR,
-                    "--no-warn-script-location", "--disable-pip-version-check",
-                    "flask", "requests", "pywebview", "mcauth3", "pillow"],
-                   timeout=900, creationflags=NO_WINDOW)
+        if pip_ok(py):
+            log("pip 就绪")
+            return True
+    log("pip 仍然不可用，无法安装依赖库")
+    return False
+
+
+def pip_install(py, pkgs, index, target=None, timeout=900) -> bool:
+    """装一批包；失败时把 pip 的输出写进日志，方便排查。"""
+    cmd = ["-m", "pip", "install", "-i", index, "--no-warn-script-location",
+           "--disable-pip-version-check", "--no-cache-dir", "--prefer-binary"]
+    if target:
+        cmd += ["--target", target, "--upgrade"]
+    cmd += list(pkgs)
+    try:
+        r = _run(py, cmd, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        log("安装超时：%s" % " ".join(pkgs))
+        return False
+    if r.returncode == 0:
+        return True
+    log("安装失败（%s，退出码 %s）：%s"
+        % (index.split("/")[2], r.returncode,
+           _tail((r.stdout or b"") + (r.stderr or b""))))
+    return False
+
+
+def install_optional(py):
+    """可选依赖装不上不影响启动，只在缺失时试一次。"""
+    if _can_import(py, "import mcauth3,PIL;print('ok')"):
+        return
+    pip_install(py, DEPS_OPT, PYPI_MIRRORS[0], timeout=600)
+
+
+def ensure_deps(py):
+    """
+    检查 flask/requests/pywebview，缺了才装。
+    装不上就抛错，绝不静默往下走（以前装失败照样启动，结果 import requests 崩）。
+    """
+    ensure_site(py)
+    if deps_ready(py):
+        log("依赖库已就绪")
+        install_optional(py)
+        return
+
+    log("安装依赖库（flask / requests / pywebview …）")
+    if not ensure_pip(py):
+        raise RuntimeError("pip 不可用，无法安装依赖库（详见日志）")
+
+    # 1) 常规装法：逐个镜像重试，装完还要真 import 一次才算数
+    for idx in PYPI_MIRRORS:
+        if not pip_install(py, DEPS_CORE + DEPS_UI, idx):
+            continue
+        if deps_ready(py):
+            log("依赖库安装完成（镜像 %s）" % idx.split("/")[2])
+            install_optional(py)
+            return
+        log("装完仍 import 不到，换下一个镜像")
+
+    # 2) 兜底：装进独立目录，再把目录挂到 ._pth / PYTHONPATH
+    log("常规安装失败，改用独立目录安装…")
+    os.makedirs(DEPS_DIR, exist_ok=True)
+    for idx in PYPI_MIRRORS:
+        if not pip_install(py, DEPS_CORE + DEPS_UI, idx, target=DEPS_DIR):
+            continue
+        if deps_ready(py, DEPS_DIR):
+            log("依赖库已装到 %s" % DEPS_DIR)
+            install_optional(py)
+            return
+        if pth_add(py, DEPS_DIR) and deps_ready(py):
+            log("依赖库已装到 %s（已写入 ._pth）" % DEPS_DIR)
+            install_optional(py)
+            return
+
+    raise RuntimeError("依赖库安装失败，请检查网络后重试（详见日志）")
 
 
 # ---------------------------------------------------------------- 启动
+def launch_env():
+    """兜底依赖目录要挂进去，主程序才能 import 到。"""
+    env = os.environ.copy()
+    if os.path.isdir(DEPS_DIR):
+        cur = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = DEPS_DIR + (os.pathsep + cur if cur else "")
+    return env
+
+
 def launch(py):
     main_py = os.path.join(KCL_DIR, "main.py")
     log("启动主程序…")
     f = open(LOG_PATH, "a", encoding="utf-8")
     p = subprocess.Popen([py, main_py, "--bootstrap"], cwd=KCL_DIR,
                          stdout=f, stderr=f, stdin=subprocess.DEVNULL,
-                         creationflags=NO_WINDOW)
+                         env=launch_env(), creationflags=NO_WINDOW)
     # 等主程序把本地服务跑起来（日志里会出现 127.0.0.1）
     deadline = time.time() + 40
     started = False
@@ -344,8 +509,8 @@ def main():
         slim = not payload_has_runtime()
         if slim:
             log("精简版本体：运行环境在首次运行时联网补齐，之后会回填进 exe")
-        py = find_python(prefer_runtime=True)
-        if not py or not deps_ready(py):
+        py_probe = find_python(prefer_runtime=True, quiet=True)
+        if not py_probe or not deps_ready(py_probe):
             long_job = True
             show_wait(wait_title, "首次启动需要准备运行环境（Python + 依赖库），\n"
                                  "完成后窗口会自动打开，并且会把它们打包进 exe，\n"
@@ -362,6 +527,8 @@ def main():
             return 0
         rc = proc.poll()
         msg = ("主程序启动失败（退出码 %s）。\n\n"
+               "常见原因是依赖库没装全：可以删掉 KCL\\runtime 文件夹后\n"
+               "重新双击启动器，让它重新联网补齐运行环境。\n\n"
                "详细日志：%s" % (rc, LOG_PATH))
         log(msg.replace("\n", " "))
         alert(msg)
