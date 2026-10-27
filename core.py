@@ -81,6 +81,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "updateCheck": True,          # 启动时检查更新（非强制）
     "updateUrl": "",
     "lastUpdate": {},
+    "changelogSeenVersion": "",   # 用户已看过的更新说明版本号，等于当前版本时不再弹窗
     # ---------- 网站连接 ----------
     "offlineMode": False,         # 关闭与外界连接：不连 KCL 服务器（更新/开发空间），其它下载正常
     "siteUrl": "",                # 脆冰网站服务端地址（开发空间等）
