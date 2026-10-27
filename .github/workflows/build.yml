@@ -1,0 +1,56 @@
+name: 检查与打包
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Python 语法检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 编译全部源文件
+        run: python -m compileall -q -x '(\.git|runtime|_build_tmp|_build_exe|_build_web|dist|build)' .
+
+  build:
+    name: 打包 Windows 启动器
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build_exe.py 会把 exe 输出到仓库根目录的上一级，
+          # 所以这里检出到子目录，让产物落在 workspace 根部便于收集。
+          path: repo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r repo/requirements.txt
+          pip install "pyinstaller>=6.0"
+
+      - name: 构建精简版 exe
+        working-directory: repo
+        # build_exe.py 默认用中文文件名，这里指定英文名以免 Artifacts 出现编码问题
+        run: python build_exe.py --slim --out launcher-slim.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CuibingLauncher-slim
+          path: launcher-slim.exe
+          if-no-files-found: error
+          retention-days: 7

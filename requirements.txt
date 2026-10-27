@@ -4,4 +4,4 @@ pywebview>=5.0
 
 # 打包用（可选）
 # pyinstaller>=6.0
-mcauth3
+mcauth3>=1.1.0

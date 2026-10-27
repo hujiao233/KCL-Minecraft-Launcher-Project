@@ -19,19 +19,19 @@
 | `启动器网页端.html` | 单文件网页版启动器（离线可用） |
 | `脆冰启动器-源码-vX.Y.Z.zip` | 完整源码包 |
 
-### 仓库直链（旧版本）
+### 命令行下载
 
-- [\[kcstudio\]脆冰启动器.exe](./%5Bkcstudio%5D脆冰启动器.exe) （约 9.9 MB）
-
-也可以通过命令行下载：
+安装包只在 Releases 提供，不再由 Git 版本管理。可以用 `gh` 一次拉取最新版的全部附件：
 
 ```bash
-curl -L -o "脆冰启动器.exe" "https://raw.githubusercontent.com/hujiao233/KCL-Minecraft-Launcher-Project/main/%5Bkcstudio%5D%E8%84%86%E5%86%B0%E5%90%AF%E5%8A%A8%E5%99%A8.exe"
+gh release download --repo hujiao233/KCL-Minecraft-Launcher-Project
 ```
+
+也可以到 [Releases 最新版](https://github.com/hujiao233/KCL-Minecraft-Launcher-Project/releases/latest) 页面手动挑选需要的文件。
 
 ## 🚀 使用方法
 
-1. 从本仓库下载 `[kcstudio]脆冰启动器.exe`
+1. 从 [Releases 页面](https://github.com/hujiao233/KCL-Minecraft-Launcher-Project/releases) 下载 `[kcstudio]脆冰启动器.exe`
 2. 双击运行（如遇 SmartScreen 提示，选择「仍要运行」）
 3. 在启动器内选择游戏版本并启动
 
@@ -52,6 +52,19 @@ python build_exe.py --slim   # 生成 压缩启动器.exe（自我增肥版）
 python build_web.py          # 生成 启动器网页端.html
 ```
 
+## 📝 更新日志
+
+### 2026-10-27　仓库整理（启动器本身没有任何改动）
+
+这次没动软件的功能，纯粹是把「放代码的仓库」收拾了一遍。跟你有关系的就这几件事：
+
+- **安装包改到 Releases 页面下载了。** 以前 exe 和源码压缩包是直接堆在仓库里的，每出一个版本就多塞 10 MB 进去，仓库越来越臃肿，也不容易看清每次到底改了哪几行代码。现在它们统一挂到右侧的 Releases 页面，仓库里只保留干净的源码——这一下瘦了约 11 MB。
+- **删掉了一个重复的界面文件。** 根目录的 `index.html` 和 `ui/index.html` 内容一字不差，各占 337 KB。程序实际读的是 `ui/` 里那份，根目录的属于多余的副本。
+- **开源许可终于写清楚了。** 之前只写了一句「版权归 kcstudio 所有」，按默认规则这意味着别人既不能用也不能改。现在补上了 GPL-3.0：可以免费用、随便改、随便分发，但只要把改过的版本发出去，就得把改的部分同样开源出来。
+- **以后有自动检查了。** 每次提交代码，GitHub 都会自动把全部源码编译一遍确认没写错语法，顺手再打包出一个精简版 exe 供下载（保留 7 天）。避免手滑提交一份跑不起来的版本。
+
+> 如果你是从仓库里直接右键下载 exe 的老用户，请改去 [Releases 页面](https://github.com/hujiao233/KCL-Minecraft-Launcher-Project/releases) 下载，旧链接已经失效。
+
 ## ℹ️ 说明
 
 - 本启动器仅供学习交流使用，请支持正版 Minecraft。
@@ -59,5 +72,9 @@ python build_web.py          # 生成 启动器网页端.html
 
 ## 📄 许可
 
-启动器程序版权归 kcstudio 所有。
+版权所有 © kcstudio。
+
+源码采用 [GNU General Public License v3.0](./LICENSE) 授权分发。基于本项目二次开发并对外发布时，须同样以 GPL-3.0 开源你所修改的全部代码。
+
+Minecraft 是 Mojang Studios 的商标，与本许可证无关。
 

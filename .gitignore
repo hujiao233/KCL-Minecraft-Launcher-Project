@@ -2,27 +2,45 @@
 runtime/
 # 下载的 Java 运行时
 java/
+
 # Python 缓存与编译产物
 __pycache__/
 *.pyc
 *.pyo
+
 # 打包临时目录
 _build_tmp/
 _build_exe/
 _build_web/
 dist/
 build/
+
+# 打包产物与源码包（改用 GitHub Releases 分发，不要进版本库）
 *.spec
-# 运行时数据与日志
-logs/
-tmp/
+*.exe
+*.msi
+*.zip
+*.rar
+*.7z
+
+# 便携模式运行时在程序目录生成的产物与缓存
+manifest.json
+selfcheck.json
 启动器日志.txt
 _port.txt
 _grow.json
 config.json
 accounts.json
 token.txt
+logs/
+tmp/
 *.log
+
+# 操作系统无关文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
 # 编辑器
 .vscode/
 .idea/
