@@ -23,7 +23,18 @@ GET_PIP = [
     "https://mirrors.aliyun.com/pypi/get-pip.py",
     "https://bootstrap.pypa.io/get-pip.py",
 ]
+# 便携版 Python 没有 distutils，get-pip.py 会直接崩在
+# "No module named 'distutils'"，所以优先下载 pip 的 wheel 解压。
+# pip 24.x 不依赖 distutils，实测可用。
+PIP_VER = "24.2"
+PIP_INDEXES = [
+    "https://mirrors.aliyun.com/pypi/simple/pip/",
+    "https://pypi.tuna.tsinghua.edu.cn/simple/pip/",
+    "https://pypi.org/simple/pip/",
+]
 INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
+# 先装好构建后端，遇到只有源码包（没有 wheel）的依赖时才不会卡住
+BUILD_PKGS = ["setuptools", "wheel"]
 DEPS = ["flask", "requests", "pywebview", "mcauth3", "pillow", "comtypes"]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -41,6 +52,84 @@ def download(url, dest, timeout=180):
                 break
             f.write(b)
     return os.path.getsize(dest)
+
+
+def pip_ok(py) -> bool:
+    r = subprocess.run([py, "-m", "pip", "--version"], capture_output=True,
+                       creationflags=NO_WINDOW)
+    return r.returncode == 0
+
+
+def pip_wheel_url() -> str:
+    """从镜像的 simple 索引里挑出 pip 的 wheel 地址。"""
+    import re
+    for idx in PIP_INDEXES:
+        try:
+            req = urllib.request.Request(idx, headers={"User-Agent": "CuibingLauncher/0.1"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                html = r.read().decode("utf-8", "ignore")
+            links = [u for u in re.findall(r'href="([^"]+)"', html)
+                     if "/pip-" in u and "-py3-none-any.whl" in u]
+            hit = [u for u in links if "/pip-%s-py3-none-any.whl" % PIP_VER in u]
+            if not hit:
+                continue
+            u = hit[-1].split("#")[0]
+            if u.startswith("http"):
+                return u
+            return idx.split("/simple/")[0] + "/" + u.split("../../")[-1].lstrip("/")
+        except Exception as e:  # noqa: BLE001
+            log("pip 索引失败（%s）：%s" % (idx.split("/")[2], e))
+    return ""
+
+
+def install_pip(py, sp) -> bool:
+    """
+    便携版 Python 既没有 pip 也没有 distutils：
+    get-pip.py 会在 import distutils 时崩掉，所以直接下 wheel 解压。
+    """
+    if pip_ok(py):
+        return True
+
+    url = pip_wheel_url()
+    if url:
+        wp = os.path.join(RUNTIME, "_pip.whl")
+        try:
+            log("下载 " + url.split("/")[-1])
+            download(url, wp)
+            os.makedirs(sp, exist_ok=True)
+            with zipfile.ZipFile(wp) as z:
+                z.extractall(sp)
+            log("pip 就绪（wheel）")
+        except Exception as e:  # noqa: BLE001
+            log("pip wheel 失败：" + str(e))
+        finally:
+            try:
+                os.remove(wp)
+            except OSError:
+                pass
+        if pip_ok(py):
+            return True
+
+    # 兜底：get-pip.py（自带 distutils 的环境上才走得通）
+    gp = os.path.join(RUNTIME, "get-pip.py")
+    for url in GET_PIP:
+        try:
+            log("下载 " + url)
+            download(url, gp)
+            # 新版 get-pip.py 已移除 --no-setuptools / --no-wheel，带上会直接报错
+            subprocess.run([py, gp, "--no-warn-script-location"],
+                           cwd=RUNTIME, creationflags=NO_WINDOW)
+        except Exception as e:  # noqa: BLE001
+            log("失败：" + str(e))
+        finally:
+            try:
+                os.remove(gp)
+            except OSError:
+                pass
+        if pip_ok(py):
+            log("pip 就绪（get-pip）")
+            return True
+    return False
 
 
 def main():
@@ -87,29 +176,15 @@ def main():
     sp = os.path.join(RUNTIME, "Lib", "site-packages")
     os.makedirs(sp, exist_ok=True)
 
-    gp = os.path.join(RUNTIME, "get-pip.py")
-    got_pip = False
-    for url in GET_PIP:
-        try:
-            log("下载 " + url)
-            download(url, gp)
-            got_pip = True
-            break
-        except Exception as e:  # noqa: BLE001
-            log("失败：" + str(e))
-    if got_pip:
-        # 新版 get-pip.py 已移除 --no-setuptools / --no-wheel，带上会直接报错
-        subprocess.run([py, gp, "--no-warn-script-location"],
-                       cwd=RUNTIME, creationflags=NO_WINDOW)
-        try:
-            os.remove(gp)
-        except OSError:
-            pass
+    if not install_pip(py, sp):
+        log("pip 不可用，无法安装依赖库")
+        return 1
 
-    log("安装依赖：" + " ".join(DEPS))
-    subprocess.run([py, "-m", "pip", "install", "-i", INDEX, "--no-warn-script-location",
-                    "--disable-pip-version-check", "--no-cache-dir"] + DEPS,
-                   cwd=RUNTIME, creationflags=NO_WINDOW)
+    for group in (BUILD_PKGS, DEPS):
+        log("安装依赖：" + " ".join(group))
+        subprocess.run([py, "-m", "pip", "install", "-i", INDEX, "--no-warn-script-location",
+                        "--disable-pip-version-check", "--no-cache-dir", "--prefer-binary"]
+                       + group, cwd=RUNTIME, creationflags=NO_WINDOW)
 
     # 精简
     removed = 0

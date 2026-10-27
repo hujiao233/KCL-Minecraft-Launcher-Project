@@ -44,6 +44,14 @@ GET_PIP_URLS = [
     "https://mirrors.aliyun.com/pypi/get-pip.py",
     "https://bootstrap.pypa.io/get-pip.py",
 ]
+# 便携版 Python 没有 distutils，get-pip.py 会崩在
+# "No module named 'distutils'"；pip 24.x 不依赖它，直接下 wheel 解压最稳。
+PIP_VER = "24.2"
+PIP_INDEXES = [
+    "https://mirrors.aliyun.com/pypi/simple/pip/",
+    "https://pypi.tuna.tsinghua.edu.cn/simple/pip/",
+    "https://pypi.org/simple/pip/",
+]
 DEPS_DIR = os.path.join(KCL_DIR, "deps")   # 装不进 runtime 时的兜底目录
 
 
@@ -351,6 +359,56 @@ def pip_ok(py) -> bool:
         return False
 
 
+def fetch_text(url, timeout=60) -> str:
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "CuibingLauncher/0.1"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "ignore")
+
+
+def pip_wheel_url() -> str:
+    """从镜像的 simple 索引里挑出 pip 的 wheel 地址。"""
+    import re
+    for idx in PIP_INDEXES:
+        try:
+            html = fetch_text(idx)
+            links = [u for u in re.findall(r'href="([^"]+)"', html)
+                     if "/pip-" in u and "-py3-none-any.whl" in u]
+            hit = [u for u in links if "/pip-%s-py3-none-any.whl" % PIP_VER in u]
+            if not hit:
+                continue
+            u = hit[-1].split("#")[0]
+            if u.startswith("http"):
+                return u
+            return idx.split("/simple/")[0] + "/" + u.split("../../")[-1].lstrip("/")
+        except Exception as e:  # noqa: BLE001
+            log("pip 索引失败（%s）：%s" % (idx.split("/")[2], e))
+    return ""
+
+
+def install_pip_wheel(py) -> bool:
+    """便携版没有 distutils，get-pip 走不通；直接把 pip 的 wheel 解开。"""
+    url = pip_wheel_url()
+    if not url:
+        log("找不到 pip wheel")
+        return False
+    wp = os.path.join(os.path.dirname(py), "_pip.whl")
+    try:
+        download(url, wp)
+        os.makedirs(site_packages(py), exist_ok=True)
+        with zipfile.ZipFile(wp) as z:
+            z.extractall(site_packages(py))
+        log("pip 就绪（wheel %s）" % PIP_VER)
+    except Exception as e:  # noqa: BLE001
+        log("pip wheel 失败：" + str(e))
+    finally:
+        try:
+            os.remove(wp)
+        except OSError:
+            pass
+    return pip_ok(py)
+
+
 def ensure_pip(py) -> bool:
     """便携版 Python 没有 pip，先补上；补不上就没法装依赖。"""
     if pip_ok(py):
@@ -363,6 +421,8 @@ def ensure_pip(py) -> bool:
             return True
     except Exception as e:  # noqa: BLE001
         log("ensurepip 失败：" + str(e))
+    if install_pip_wheel(py):
+        return True
     for url in GET_PIP_URLS:
         gp = os.path.join(os.path.dirname(py), "get-pip.py")
         try:
@@ -425,6 +485,9 @@ def ensure_deps(py):
     log("安装依赖库（flask / requests / pywebview …）")
     if not ensure_pip(py):
         raise RuntimeError("pip 不可用，无法安装依赖库（详见日志）")
+
+    # 只有源码包的依赖需要构建后端，先补上，装不上也不拦路
+    pip_install(py, ["setuptools", "wheel"], PYPI_MIRRORS[0], timeout=600)
 
     # 1) 常规装法：逐个镜像重试，装完还要真 import 一次才算数
     for idx in PYPI_MIRRORS:
