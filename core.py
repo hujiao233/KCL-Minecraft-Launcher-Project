@@ -9,7 +9,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import sys
 import threading
 import time
 import uuid as _uuid
@@ -34,10 +36,29 @@ LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 
 _lock = threading.Lock()
 
-# 默认游戏目录沿用官方位置
-DEFAULT_GAME_DIR = os.path.join(
+# 启动器程序所在目录（KCL.exe / main.py 所在的那个文件夹）
+# 打包成 exe 时 sys.executable 就是 exe 本体，源码运行时用本文件位置
+LAUNCH_DIR = os.path.dirname(os.path.abspath(
+    sys.executable if getattr(sys, "frozen", False) else __file__))
+
+
+def _dir_usable(d: str) -> bool:
+    """目录能不能建、能不能写（装在 Program Files 时启动器同级目录可能是只读的）。"""
+    try:
+        parent = d if os.path.isdir(d) else (os.path.dirname(d) or ".")
+        return os.access(parent, os.W_OK)
+    except Exception:      # noqa: BLE001
+        return False
+
+
+# 默认游戏目录：启动器同级的 .minecraft（便携——整个文件夹拷到 U 盘也能带走）
+# 启动器同级目录不可写时（例如装在 Program Files）才退回官方位置
+PORTABLE_GAME_DIR = os.path.join(LAUNCH_DIR, ".minecraft")
+FALLBACK_GAME_DIR = os.path.join(
     os.environ.get("APPDATA", os.path.expanduser("~")), ".minecraft"
 )
+DEFAULT_GAME_DIR = (PORTABLE_GAME_DIR if _dir_usable(PORTABLE_GAME_DIR)
+                    else FALLBACK_GAME_DIR)
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "gameDir": DEFAULT_GAME_DIR,
@@ -356,17 +377,11 @@ VERSION_SETTING_KEYS = ("javaPath", "maxMemory", "jvmArgs", "windowWidth",
 
 # 首次运行时自动挑选游戏目录
 def auto_detect_game_dir() -> str:
-    """首次启动自动探测：优先官方 .minecraft，否则用启动器目录下的 game。"""
-    official = DEFAULT_GAME_DIR
-    if os.path.isdir(official):
-        return official
-    for cand in (
-        os.path.join(os.path.expanduser("~"), ".minecraft"),
-        os.path.join(ROOT_DIR, "game"),
-    ):
-        if os.path.isdir(cand):
+    """首次启动自动探测：优先启动器同级的 .minecraft，不行再退回官方位置。"""
+    for cand in (PORTABLE_GAME_DIR, FALLBACK_GAME_DIR, os.path.join(ROOT_DIR, "game")):
+        if _dir_usable(cand):
             return cand
-    return official
+    return FALLBACK_GAME_DIR
 
 
 def ensure_dirs() -> None:
@@ -391,6 +406,14 @@ def load() -> Dict[str, Any]:
     if first_run and not cfg.get("gameDirSelected"):
         cfg["gameDir"] = auto_detect_game_dir()
         cfg["gameDirSelected"] = False   # 标记为「自动」，用户手动选择后置 True
+        save(cfg)
+    # 老用户迁移：游戏目录此前是自动分配的（没手动选过）就改到启动器同级的 .minecraft，
+    # 手动指定过的永远听用户的，不动
+    elif (not cfg.get("gameDirSelected")
+          and os.path.normcase(os.path.abspath(cfg.get("gameDir") or ""))
+          != os.path.normcase(os.path.abspath(PORTABLE_GAME_DIR))
+          and _dir_usable(PORTABLE_GAME_DIR)):
+        cfg["gameDir"] = PORTABLE_GAME_DIR
         save(cfg)
     if not cfg.get("gameDir"):
         cfg["gameDir"] = DEFAULT_GAME_DIR
@@ -421,7 +444,11 @@ def update(patch: Dict[str, Any]) -> Dict[str, Any]:
 def game_dir(cfg: Dict[str, Any] | None = None) -> str:
     cfg = cfg or load()
     d = cfg.get("gameDir") or DEFAULT_GAME_DIR
-    os.makedirs(d, exist_ok=True)
+    try:
+        os.makedirs(d, exist_ok=True)
+    except Exception:      # noqa: BLE001 - 目录不可写（如装在 Program Files）时退回官方位置
+        d = FALLBACK_GAME_DIR
+        os.makedirs(d, exist_ok=True)
     return d
 
 
@@ -441,6 +468,177 @@ def assets_dir(cfg: Dict[str, Any] | None = None) -> str:
     d = os.path.join(game_dir(cfg), "assets")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+# ==================================================================
+# 老游戏目录 → 新游戏目录 的文件转移
+# ==================================================================
+
+# 只搬这些顶层目录（游戏本体、运行库、资源、存档、mod 之类）
+MIGRATE_ITEMS = (
+    "versions", "libraries", "assets", "mods", "saves", "resourcepacks",
+    "shaderpacks", "config", "crash-reports", "screenshots", "backups",
+    "schematics", "datapacks", "logs",
+)
+# 顶层散着的配置文件
+MIGRATE_FILES = (
+    "options.txt", "servers.dat", "hotbar.nbt", "usercache.json",
+    "usernamecache.json", "launcher_profiles.json", "launcher_accounts.json",
+)
+
+
+def _path_size(p: str) -> int:
+    """文件或目录的总字节数。"""
+    try:
+        if os.path.isfile(p):
+            return os.path.getsize(p)
+    except OSError:
+        return 0
+    total = 0
+    for dp, _dn, fn in os.walk(p):
+        for f in fn:
+            try:
+                total += os.path.getsize(os.path.join(dp, f))
+            except OSError:
+                pass
+    return total
+
+
+def _drive_of(p: str) -> str:
+    return os.path.splitdrive(os.path.abspath(p))[0].upper()
+
+
+def _human_mb(n: int) -> str:
+    return "%.1f MB" % (n / 1024 / 1024)
+
+
+def migrate_plan(src: str = "", dst: str = "") -> Dict[str, Any]:
+    """列出能从老目录搬到新目录的东西（只统计真实存在的），先给个数让用户确认。"""
+    src = os.path.abspath(src or FALLBACK_GAME_DIR)
+    dst = os.path.abspath(dst or (load().get("gameDir") or DEFAULT_GAME_DIR))
+    if not os.path.isdir(src):
+        return {"ok": False, "msg": "源目录不存在：" + src,
+                "src": src, "dst": dst, "items": [], "total": 0}
+    if os.path.normcase(src) == os.path.normcase(dst):
+        return {"ok": False, "msg": "源目录和目标目录是同一个，不用搬",
+                "src": src, "dst": dst, "items": [], "total": 0}
+    items, total = [], 0
+    for name in MIGRATE_ITEMS + MIGRATE_FILES:
+        p = os.path.join(src, name)
+        if not os.path.exists(p):
+            continue
+        size = _path_size(p)
+        total += size
+        items.append({"name": name, "size": size, "sizeText": _human_mb(size),
+                      "inDst": os.path.exists(os.path.join(dst, name))})
+    return {"ok": True, "src": src, "dst": dst, "items": items,
+            "total": total, "totalText": _human_mb(total),
+            "sameDrive": _drive_of(src) == _drive_of(dst)}
+
+
+def _merge_tree(src: str, dst: str, on_file=None) -> Tuple[int, int, int, int]:
+    """把 src 合并进 dst：目标已存在的同名文件跳过（绝不覆盖），返回 (复制数, 跳过数, 失败数, 字节数)。"""
+    copied = skipped = failed = nbytes = 0
+
+    def _one(s: str, t: str):
+        nonlocal copied, skipped, failed, nbytes
+        if os.path.exists(t):
+            skipped += 1
+            return
+        try:
+            os.makedirs(os.path.dirname(t) or ".", exist_ok=True)
+            shutil.copy2(s, t)
+            copied += 1
+            try:
+                sz = os.path.getsize(t)
+            except OSError:
+                sz = 0
+            nbytes += sz
+            if on_file:
+                on_file(t, sz)
+        except Exception:      # noqa: BLE001
+            failed += 1
+
+    if os.path.isfile(src):
+        _one(src, dst)
+        return copied, skipped, failed, nbytes
+    for dp, _dn, fn in os.walk(src):
+        rel = os.path.relpath(dp, src)
+        target_dir = dst if rel == "." else os.path.join(dst, rel)
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except Exception:      # noqa: BLE001
+            pass
+        for f in fn:
+            _one(os.path.join(dp, f), os.path.join(target_dir, f))
+    return copied, skipped, failed, nbytes
+
+
+def migrate_game_dir(src: str = "", dst: str = "", move: bool = False,
+                     on_progress=None) -> Dict[str, Any]:
+    """
+    把老游戏目录里的东西搬到新游戏目录。
+
+    move=False（默认）：复制过去，老目录原样留着，确认没问题再自己删——最稳。
+    move=True        ：每个顶层项复制成功且零失败后，才删掉老目录里那一项。
+    同名文件一律跳过，不覆盖目标里已有的内容；跨盘复制前会先检查空间够不够。
+    """
+    plan = migrate_plan(src, dst)
+    if not plan.get("ok"):
+        return plan
+    src, dst = plan["src"], plan["dst"]
+
+    if _drive_of(src) != _drive_of(dst) and plan["total"] > 0:
+        try:
+            free = shutil.disk_usage(os.path.dirname(dst) or dst).free
+            if plan["total"] > free:
+                return {"ok": False, "msg": "目标盘空间不足：需要 %s，可用 %s"
+                        % (_human_mb(plan["total"]), _human_mb(free)),
+                        "src": src, "dst": dst}
+        except Exception:      # noqa: BLE001
+            pass
+
+    os.makedirs(dst, exist_ok=True)
+    done_bytes = 0
+    result: Dict[str, Any] = {
+        "ok": True, "src": src, "dst": dst, "moved": [], "copied": [],
+        "failed": [], "files": 0, "skipped": 0, "bytes": 0, "total": plan["total"],
+    }
+
+    for it in plan["items"]:
+        name = it["name"]
+        s, t = os.path.join(src, name), os.path.join(dst, name)
+
+        def _cb(_p, sz, _name=name):
+            nonlocal done_bytes
+            done_bytes += sz
+            if on_progress:
+                on_progress(_name, _p, done_bytes, plan["total"])
+
+        c, sk, fa, nb = _merge_tree(s, t, _cb)
+        result["files"] += c
+        result["skipped"] += sk
+        result["bytes"] += nb
+        if fa:
+            result["failed"].append(name)
+            result["ok"] = False
+            continue
+        if move:
+            try:
+                if os.path.isfile(s):
+                    os.remove(s)
+                else:
+                    shutil.rmtree(s, ignore_errors=True)
+                result["moved"].append(name)
+            except Exception:      # noqa: BLE001
+                result["copied"].append(name)
+        else:
+            result["copied"].append(name)
+
+    result["bytesText"] = _human_mb(result["bytes"])
+    result["msg"] = ("搬完 %d 个文件（%s）" % (result["files"], result["bytesText"])
+                     if result["ok"] else "有内容没搬成功：" + "、".join(result["failed"]))
+    return result
 
 
 def version_dir(version_id: str, cfg: Dict[str, Any] | None = None) -> str:
@@ -543,6 +741,7 @@ class Task:
         self.speed: int = 0          # bytes/s（瞬时估算）
         self.message: str = ""
         self.error: str = ""
+        self.result: Any = None      # 任务自己产出的结果（例如迁移报告）
         self.started_at: float = 0.0
         self.finished_at: float = 0.0
         self._thread: Optional[threading.Thread] = None
@@ -575,6 +774,7 @@ class Task:
             "speed": self.speed,
             "message": self.message,
             "error": self.error,
+            "result": self.result,
             "elapsed": round(time.time() - self.started_at, 1) if self.started_at else 0,
         }
 

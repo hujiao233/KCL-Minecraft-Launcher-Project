@@ -1552,6 +1552,57 @@ def api_launch_stop():
     return ok(True)
 
 
+# ---------------- 老游戏目录迁移 ----------------
+
+@app.get("/api/game/migrate/plan")
+def api_migrate_plan():
+    """先看一眼：老目录里有哪些东西能搬、一共多大、目标里是不是已经有了。"""
+    src = request.args.get("from", "").strip() or core.FALLBACK_GAME_DIR
+    dst = request.args.get("to", "").strip() or core.game_dir()
+    return ok(core.migrate_plan(src, dst))
+
+
+@app.post("/api/game/migrate")
+def api_migrate():
+    """把老游戏目录的内容搬到当前游戏目录（后台任务，带进度）。
+
+    body: {from?, to?, move?}  move=true 时搬成功的项会从老目录删掉（默认只复制）。
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    src = (body.get("from") or "").strip() or core.FALLBACK_GAME_DIR
+    dst = (body.get("to") or "").strip() or core.game_dir()
+    move = bool(body.get("move"))
+
+    plan = core.migrate_plan(src, dst)
+    if not plan.get("ok"):
+        return err(plan.get("msg", "无法迁移"))
+
+    def _worker(task):
+        task.total = plan["total"]
+        last = [0.0]
+
+        def _prog(name, path, done, total):
+            task.done = done
+            task.current_file = path
+            now = time.time()
+            if now - last[0] > 0.3:
+                last[0] = now
+                task.message = f"搬运 {name}：{done / 1048576:.1f} / {total / 1048576:.1f} MB"
+            if task.cancelled:
+                raise Exception("已取消")
+
+        r = core.migrate_game_dir(src, dst, move=move, on_progress=_prog)
+        task.message = r.get("msg", "完成")
+        task.result = r         # 结果挂在任务上，前端读 /api/tasks/<id> 拿得到
+        if not r.get("ok"):
+            task.state = core.TaskState.FAILED
+            task.error = r.get("msg", "迁移未全部完成")
+
+    task = core.tasks.create("migrate", "迁移游戏文件", dst)
+    core.tasks.start(task, _worker)
+    return ok(task.to_dict())
+
+
 @app.get("/api/pick/dir")
 def api_pick_dir():
     """弹出系统目录选择框（Windows 原生 filedialog）。"""
