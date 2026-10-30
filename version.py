@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -165,6 +166,8 @@ CATS = {
     "snapshot": "快照",
     "prerelease": "预发布",
     "aprilfools": "愚人节",
+    "old_beta": "远古·Beta",
+    "old_alpha": "远古·Alpha",
 }
 
 _NEW_RE = re.compile(r"^(\d{2})\.(\d+)(?:\.(\d+))?(?:-(snapshot|pre|rc)-(\d+))?$")
@@ -179,6 +182,10 @@ def classify(vid: str, vtype: str = "release") -> Dict[str, Any]:
     返回 {cat, key, seq, year}
     """
     vid = vid or ""
+    # 远古版本（b1.7.3 / a1.2.6 之类）：清单本身就标了类型，直接采信，
+    # 它们的 ID 不符合任何现代命名规则，交给版本号解析反而会误判
+    if vtype in ("old_alpha", "old_beta"):
+        return {"cat": vtype, "key": (0, 0, 0), "seq": 0, "year": 0}
     # 白名单优先：这三个 ID 不符合任何命名规则，只能硬匹配
     if vid in APRILFOOLS_IDS:
         return {"cat": "aprilfools", "key": (0, 0, 0), "seq": 0, "year": 0}
@@ -238,6 +245,8 @@ def version_allowed(vid: str, vtype: str = "release") -> Optional[str]:
         # 白名单 + 命名规则已经足够可靠，不再卡年份下限
         # （之前卡 27 年，把 26w14a 这个 2026 年愚人节版本直接挡掉了）
         return "aprilfools"
+    if cat in ("old_alpha", "old_beta"):
+        return cat          # 远古版本：能列出，但安装前请先看 collect_assets 的说明
     return None
 
 
@@ -245,19 +254,20 @@ def list_online_versions(force: bool = False, cat: str = "all",
                          query: str = "") -> List[Dict[str, Any]]:
     """
     返回可选下载的版本列表（倒序：最新在前）。
-    cat: all | release | snapshot | prerelease | aprilfools
+    cat: all | release | snapshot | prerelease | aprilfools | old（= alpha + beta）
     """
     m = fetch_manifest(force)
     out: List[Dict[str, Any]] = []
     for v in m.get("versions", []):
         vid = v.get("id", "")
         vtype = v.get("type", "release")
-        if vtype in ("old_alpha", "old_beta"):
-            continue                      # 1.13 之前的远古版本一律不提供
         c = version_allowed(vid, vtype)
         if not c:
             continue
-        if cat != "all" and c != cat:
+        if cat == "old":
+            if c not in ("old_alpha", "old_beta"):
+                continue
+        elif cat != "all" and c != cat:
             continue
         if query and query.lower() not in vid.lower():
             continue
@@ -279,14 +289,15 @@ def list_online_versions(force: bool = False, cat: str = "all",
 def online_counts(force: bool = False) -> Dict[str, int]:
     """各类别可下载数量（用于界面页签角标）。"""
     m = fetch_manifest(force)
-    counts = {"all": 0, "release": 0, "snapshot": 0, "prerelease": 0, "aprilfools": 0}
+    counts = {"all": 0, "release": 0, "snapshot": 0, "prerelease": 0,
+              "aprilfools": 0, "old_alpha": 0, "old_beta": 0, "old": 0}
     for v in m.get("versions", []):
-        if v.get("type") in ("old_alpha", "old_beta"):
-            continue
         c = version_allowed(v.get("id", ""), v.get("type", "release"))
         if c:
             counts[c] += 1
             counts["all"] += 1
+    # 界面上「远古」是一个页签，角标显示两类之和
+    counts["old"] = counts["old_alpha"] + counts["old_beta"]
     return counts
 
 
@@ -632,6 +643,51 @@ def collect_assets(vj: Dict[str, Any], cfg: Dict[str, Any] | None = None,
     return items
 
 
+def map_legacy_resources(vj: Dict[str, Any],
+                         cfg: Dict[str, Any] | None = None) -> int:
+    """把老版本资源展开成 resources 目录，返回实际复制的文件数。
+
+    1.6 及更早的版本（b1.7.3 / a1.2.6 之类）的资源索引带 map_to_resources 标记：
+    启动时 Minecraft 是按真实文件名去 assets/resources/ 下找文件的，而下载下来的
+    是 assets/objects/ 里的 hash 结构。不展开的话老版本能启动但没贴图、没声音。
+    现代版本的索引没有这个标记，直接跳过。
+    """
+    cfg = cfg or core.load()
+    idx_id = (vj.get("assetIndex") or {}).get("id") or vj.get("assets")
+    if not idx_id:
+        return 0
+    idx_path = os.path.join(core.assets_dir(cfg), "indexes", f"{idx_id}.json")
+    if not os.path.isfile(idx_path):
+        return 0
+    try:
+        with open(idx_path, "r", encoding="utf-8") as f:
+            index = json.load(f)
+    except Exception:  # noqa: BLE001
+        return 0
+    if not index.get("map_to_resources"):
+        return 0
+
+    obj_root = os.path.join(core.assets_dir(cfg), "objects")
+    res_root = os.path.join(core.assets_dir(cfg), "resources")
+    n = 0
+    for name, obj in (index.get("objects") or {}).items():
+        if not isinstance(obj, dict):
+            continue
+        h = obj.get("hash", "")
+        if not h:
+            continue
+        src = os.path.join(obj_root, h[:2], h)
+        if not os.path.isfile(src):
+            continue                      # 这个 object 没下载成功，跳过
+        dst = os.path.join(res_root, name.replace("/", os.sep))
+        if os.path.isfile(dst):
+            continue                      # 已经展开过
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(src, dst)
+        n += 1
+    return n
+
+
 def collect_logging(vj: Dict[str, Any],
                     cfg: Dict[str, Any] | None = None) -> Tuple[Optional[DownloadItem], str]:
     """返回 (日志配置文件下载项, JVM 参数)。"""
@@ -715,7 +771,18 @@ def install_version(vid: str, task, with_assets: bool = True) -> None:
     else:
         task.total = max(1, len(items))
 
+    # 老版本资源展开：objects 是 hash 结构，而老版本启动时按真实文件名读
+    # resources 目录，缺这一步会没贴图没声音
+    def _map_legacy():
+        if not with_assets:
+            return
+        try:
+            map_legacy_resources(vj, cfg)
+        except Exception:  # noqa: BLE001
+            pass              # 展开失败不阻断安装，最多是老版本资源缺失
+
     if not items:
+        _map_legacy()
         task.done = task.total
         task.message = "已是最新，无需下载"
         task.state = core.TaskState.SUCCESS
@@ -751,6 +818,10 @@ def install_version(vid: str, task, with_assets: bool = True) -> None:
             extract_natives(vid)
         except Exception as e:  # noqa: BLE001
             failures.append(("natives", str(e)))
+
+    # 4. 老版本资源展开（b1.7.3 / a1.2.6 这类）
+    if not task.cancelled:
+        _map_legacy()
 
     if failures:
         head = failures[0]
