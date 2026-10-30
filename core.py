@@ -1233,7 +1233,10 @@ def resolve_java(preferred: str = "") -> Optional[Dict[str, Any]]:
 def recommended_major(mc_version: str) -> int:
     """
     返回建议的 Java 主版本：
-    1.16 及以下 -> 8；1.17~1.20.4 -> 17；1.20.5+ -> 21
+    远古版本与 1.16 及以下 -> 8；1.17~1.20.4 -> 17；1.20.5~2025 -> 21；2026 起 -> 25
+
+    注意不能只用「提取数字」来判断：rd-132211 会拆出 132211、15w14a 会拆出 15，
+    那样会把 2009 年的版本和 2015 年的快照都当成需要最新 Java 的新版本。
     """
     def _tuple(v: str):
         parts = re.findall(r"\d+", v)
@@ -1242,14 +1245,37 @@ def recommended_major(mc_version: str) -> int:
         except Exception:
             return (0,)
 
-    t = _tuple(mc_version)
-    v10000 = (t[1] if len(t) > 1 else 0)
-    v10 = (t[2] if len(t) > 2 else 0)
+    v = str(mc_version or "").strip()
+
+    # 1) 远古版本：b1.7.3 / a1.2.6 / rd-132211 / inf-20100618 / c0.30 等
+    if re.match(r"^(?:b|a|c|rd|inf)[\d\-]", v, re.I):
+        return 8
+
+    # 2) 周格式快照：15w14a / 20w14infinite / 26w14a，按年份换算
+    m = re.match(r"^(\d{2})w(\d{2})", v, re.I)
+    if m:
+        year = 2000 + int(m.group(1))
+        if year <= 2020:
+            return 8        # 1.16 及更早
+        if year <= 2023:
+            return 17       # 1.17 ~ 1.20.4
+        if year <= 2025:
+            return 21       # 1.20.5 起
+        return 25           # 2026 年起的新版本号体系
+
+    # 3) 新版本号格式：26.3（2026 年起，官方要求 Java 25）
+    if re.match(r"^\d{2}\.\d", v):
+        return 25
+
+    # 4) 老格式 1.x.y
+    t = _tuple(v)
     if len(t) == 0:
         return 8
-    # 快照名/远古版本（如 1.13、b1.7.3）单独判段
+    v10000 = (t[1] if len(t) > 1 else 0)
+    v10 = (t[2] if len(t) > 2 else 0)
+    # 走到这里主版本号还大于 1 的，是「3D Shareware v1.34」这类特殊老版本
     if t[0] > 1:
-        return 21
+        return 8
     if v10000 >= 21:
         return 21
     if v10000 >= 20 and v10 >= 5:
