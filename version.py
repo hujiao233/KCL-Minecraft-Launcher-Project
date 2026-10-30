@@ -139,15 +139,16 @@ def fetch_manifest(force: bool = False) -> Dict[str, Any]:
 #
 # 脆冰启动器的提供策略：
 #   正式版   ：1.13 扁平化之后的所有正式版
-#   快照     ：17w 起的老周格式（1.12 之后，资源索引结构与现代一致）
+#   快照     ：13w 起的老周格式（1.6 时代起，更早的没有稳定资源索引）
 #              以及 26.x-snapshot-N 这类新格式快照
 #   预发布   ：26.3-pre / 26.3-rc 起
 #   愚人节   ：命名规则 + APRILFOOLS_IDS 白名单，不设年份下限
-#   1.13 之前：不提供（old_alpha / old_beta 属远古版本，尚未开放）
+#   远古版本 ：old_alpha / old_beta 已开放；资源索引带 map_to_resources 的
+#              （pre-1.6），安装时会展开成 resources 目录，见 map_legacy_resources
 
 RELEASE_MIN = (1, 13, 0)
 SNAPSHOT_MIN = (26, 1, 0)     # 新格式 26.x-snapshot-N 的下限
-SNAPSHOT_MIN_YEAR = 17        # 老周格式快照：17w 起
+SNAPSHOT_MIN_YEAR = 13        # 老周格式快照：13w 起（1.6 时代）
 PRERELEASE_MIN = (26, 3, 0)   # 新格式预发布：26.3-pre-1 / 26.3-rc-1 起
 
 # 愚人节版本 = Mojang 每年 4 月 1 日前后发布的玩笑版本。
