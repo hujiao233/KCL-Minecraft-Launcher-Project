@@ -138,15 +138,27 @@ def fetch_manifest(force: bool = False) -> Dict[str, Any]:
 #
 # 脆冰启动器的提供策略：
 #   正式版   ：1.13 扁平化之后的所有正式版
-#   快照     ：26.1 及之后
-#   预发布   ：27.1 及之后（未来版本）
-#   愚人节   ：27 年起
-#   1.13 之前：不提供
+#   快照     ：17w 起的老周格式（1.12 之后，资源索引结构与现代一致）
+#              以及 26.x-snapshot-N 这类新格式快照
+#   预发布   ：26.3-pre / 26.3-rc 起
+#   愚人节   ：命名规则 + APRILFOOLS_IDS 白名单，不设年份下限
+#   1.13 之前：不提供（old_alpha / old_beta 属远古版本，尚未开放）
 
 RELEASE_MIN = (1, 13, 0)
-SNAPSHOT_MIN = (26, 1, 0)
-PRERELEASE_MIN = (27, 1, 0)
-APRILFOOLS_MIN_YEAR = 27
+SNAPSHOT_MIN = (26, 1, 0)     # 新格式 26.x-snapshot-N 的下限
+SNAPSHOT_MIN_YEAR = 17        # 老周格式快照：17w 起
+PRERELEASE_MIN = (26, 3, 0)   # 新格式预发布：26.3-pre-1 / 26.3-rc-1 起
+
+# 愚人节版本 = Mojang 每年 4 月 1 日前后发布的玩笑版本。
+# 大部分能靠命名规则认出来（见 classify 里的周格式判断）：
+#   2026 年起常规快照改用 26.x-snapshot-N，周格式（26w14a）只剩愚人节在用；
+#   2025 及更早的常规快照是纯字母后缀（25w02a），愚人节则带长后缀（25w14craftmine）。
+# 但有三个历史 ID 不符合任何规则，只能写死。以后每年 4 月记得往这里补一行。
+APRILFOOLS_IDS = {
+    "1.RV-Pre1",              # 最早的一个玩笑版本，ID 完全不按常规命名
+    "15w14a",                 # 后缀只有一个字母，混在普通快照里，规则认不出
+    "3D Shareware v1.34",     # 带空格和点号，同样不是周格式
+}
 
 CATS = {
     "release": "正式版",
@@ -167,6 +179,9 @@ def classify(vid: str, vtype: str = "release") -> Dict[str, Any]:
     返回 {cat, key, seq, year}
     """
     vid = vid or ""
+    # 白名单优先：这三个 ID 不符合任何命名规则，只能硬匹配
+    if vid in APRILFOOLS_IDS:
+        return {"cat": "aprilfools", "key": (0, 0, 0), "seq": 0, "year": 0}
     m = _NEW_RE.match(vid)
     if m:
         year = int(m.group(1))
@@ -186,11 +201,11 @@ def classify(vid: str, vtype: str = "release") -> Dict[str, Any]:
         year = int(w.group(1))
         week = int(w.group(2))
         suffix = w.group(3) or ""
-        # 2026 年起周格式不再用于常规快照；另外历史上愚人节版本都带长后缀
+        # 2026 年起常规快照改用 26.x-snapshot-N，周格式只剩愚人节在用；
+        # 2025 及更早的常规快照是纯字母后缀（25w02a），愚人节带长后缀（25w14craftmine）。
         if year >= 26 or len(suffix) > 1:
             return {"cat": "aprilfools", "key": (year, week, 0), "seq": 0, "year": year}
-        # 老式周快照（18w43a 之类）不提供，排序键压到最低即可
-        return {"cat": "snapshot", "key": (0, 0, week), "seq": 0, "year": year}
+        return {"cat": "snapshot", "key": (year, week, 0), "seq": 0, "year": year}
 
     o = _OLD_RE.match(vid)
     if o:
@@ -213,11 +228,16 @@ def version_allowed(vid: str, vtype: str = "release") -> Optional[str]:
     if cat == "release":
         return "release" if key >= RELEASE_MIN else None
     if cat == "snapshot":
-        return "snapshot" if key >= SNAPSHOT_MIN else None
+        # 老周格式（25w02a）按年份放行，新格式（26.x-snapshot-N）按版本键放行
+        if info["year"] >= SNAPSHOT_MIN_YEAR or key >= SNAPSHOT_MIN:
+            return "snapshot"
+        return None
     if cat == "prerelease":
         return "prerelease" if key >= PRERELEASE_MIN else None
     if cat == "aprilfools":
-        return "aprilfools" if info["year"] >= APRILFOOLS_MIN_YEAR else None
+        # 白名单 + 命名规则已经足够可靠，不再卡年份下限
+        # （之前卡 27 年，把 26w14a 这个 2026 年愚人节版本直接挡掉了）
+        return "aprilfools"
     return None
 
 
