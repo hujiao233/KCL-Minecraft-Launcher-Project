@@ -457,6 +457,44 @@ input[type=range]::-webkit-slider-thumb {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 12px 14px; margin-bottom: 12px; box-shadow: var(--shadow);
 }
+/* 下载详情：版本头部 + 加载器列表（参考 HMCL） */
+.dl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.dl-cube img { width: 26px; height: 26px; display: block; image-rendering: pixelated; }
+.dl-vid { flex: 1; font-size: 17px; font-weight: 700; letter-spacing: .3px; }
+.loader-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.loader-row {
+  display: flex; align-items: center; gap: 12px; padding: 11px 16px;
+  background: var(--panel); border: 1.5px solid var(--line); border-radius: 12px;
+  cursor: pointer; user-select: none; transition: border-color .15s, background .15s;
+}
+.loader-row:hover { border-color: var(--accent); }
+.loader-row.sel { border-color: var(--accent); background: var(--panel); box-shadow: inset 0 0 0 1px var(--accent); }
+.loader-row.dis { opacity: .45; cursor: not-allowed; }
+.lr-ico img { width: 22px; height: 22px; display: block; image-rendering: pixelated; }
+.lr-name { font-weight: 600; min-width: 84px; }
+.lr-st { flex: 1; color: var(--muted); font-size: 13px; }
+.lr-arrow { color: var(--muted); font-size: 16px; line-height: 1; transition: transform .15s; }
+.loader-row.open .lr-arrow { transform: rotate(90deg); }
+.loader-row.sel .lr-arrow { color: var(--accent); }
+/* 展开的版本列表 */
+.lv-wrap { display: flex; flex-direction: column; gap: 4px; padding: 2px 0 6px 14px; }
+.lv-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border: 1.5px solid transparent; border-radius: 10px; cursor: pointer; user-select: none;
+}
+.lv-row:hover { background: var(--panel); border-color: var(--line); }
+.lv-row.sel { border-color: var(--accent); background: var(--panel); box-shadow: inset 0 0 0 1px var(--accent); }
+.lv-ico img { width: 18px; height: 18px; display: block; image-rendering: pixelated; }
+.lv-ver { font-weight: 600; font-size: 13.5px; }
+.lv-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+.lv-tag.stable { background: rgba(60,150,80,.15); color: #2f8a4c; }
+.lv-tag.beta { background: rgba(210,140,40,.16); color: #b07a20; }
+.lv-empty { color: var(--muted); font-size: 13px; padding: 4px 14px 10px; }
+.dl-more { margin-bottom: 4px; color: var(--muted); font-size: 13px; }
+.dl-more summary { cursor: pointer; padding: 4px 0; }
+.dl-more .row { margin-top: 8px; }
+.dl-actions { display: flex; justify-content: center; gap: 12px; margin-top: 14px; }
+.dl-go { min-width: 180px; }
 .search { width: 220px; }
 .filter-group { display: flex; gap: 6px; }
 .chip {
@@ -1056,23 +1094,55 @@ body.booting .app { opacity: 0; }
         </div>
 
         <div class="tab-body" id="tab-download" hidden>
-          <div class="dl-toolbar">
-            <input class="input search" id="searchVer" placeholder="搜索版本号，如 1.20.1">
-            <div class="filter-group" id="catChips">
-              <button class="chip active" data-cat="release">正式版 <b class="cnt" data-cnt="release"></b></button>
-              <button class="chip" data-cat="snapshot">快照 <b class="cnt" data-cnt="snapshot"></b></button>
-              <button class="chip" data-cat="prerelease">预发布 <b class="cnt" data-cnt="prerelease"></b></button>
-              <button class="chip" data-cat="aprilfools">愚人节 <b class="cnt" data-cnt="aprilfools"></b></button>
-              <button class="chip" data-cat="old">远古 <b class="cnt" data-cnt="old"></b></button>
-              <button class="chip" data-cat="all">全部 <b class="cnt" data-cnt="all"></b></button>
+          <div id="dlListView">
+            <div class="dl-toolbar">
+              <input class="input search" id="searchVer" placeholder="搜索版本号，如 1.20.1">
+              <div class="filter-group" id="catChips">
+                <button class="chip active" data-cat="release">正式版 <b class="cnt" data-cnt="release"></b></button>
+                <button class="chip" data-cat="snapshot">快照 <b class="cnt" data-cnt="snapshot"></b></button>
+                <button class="chip" data-cat="prerelease">预发布 <b class="cnt" data-cnt="prerelease"></b></button>
+                <button class="chip" data-cat="aprilfools">愚人节 <b class="cnt" data-cnt="aprilfools"></b></button>
+                <button class="chip" data-cat="old">远古 <b class="cnt" data-cnt="old"></b></button>
+                <button class="chip" data-cat="all">全部 <b class="cnt" data-cnt="all"></b></button>
+              </div>
+              <button class="btn ghost sm" id="btnRefreshVer">刷新列表</button>
             </div>
-            <button class="btn ghost sm" id="btnRefreshVer">刷新列表</button>
+            <div class="hint" style="margin:-6px 0 10px">
+              提供策略：正式版自 1.13 扁平化起 · 快照自 13w（1.6 时代）起 · 愚人节按官方发布认定 · 远古（Alpha / Beta）已开放；12w 及更早不提供。
+            </div>
+            <div class="ver-list" id="verList">
+              <div class="empty">正在获取版本列表…</div>
+            </div>
           </div>
-          <div class="hint" style="margin:-6px 0 10px">
-            提供策略：正式版自 1.13 扁平化起 · 快照自 26.1 起 · 预发布自 27.1 起 · 愚人节自 27 年起；1.13 之前的版本不再提供。
-          </div>
-          <div class="ver-list" id="verList">
-            <div class="empty">正在获取版本列表…</div>
+
+          <!-- 下载详情：点「下载安装」后进入的专门界面 -->
+          <div id="dlDetail" hidden>
+            <div class="dl-head">
+              <button class="btn ghost sm" id="btnInstallBack" title="返回列表">←</button>
+              <span class="dl-cube" id="dlCube"></span>
+              <div class="dl-vid" id="installVidLabel">—</div>
+              <button class="btn ghost sm" id="btnReloadLoaders" title="重新检查可用加载器">⟳</button>
+            </div>
+            <div class="loader-list" id="loaderList"></div>
+            <details class="dl-more">
+              <summary>更多选项（版本隔离、游戏资源）</summary>
+              <div class="row">
+                <label>版本隔离</label>
+                <select class="select" id="selIsolate">
+                  <option value="">跟随主设置</option>
+                  <option value="1">开启（存档 / mod 独立）</option>
+                  <option value="0">关闭（共用目录）</option>
+                </select>
+              </div>
+              <div class="row">
+                <label>资源文件</label>
+                <label class="switch"><input type="checkbox" id="chkAssets2" checked><span>同时下载游戏资源（音乐、语言等）</span></label>
+              </div>
+              <div class="form-note" id="installNote"></div>
+            </details>
+            <div class="dl-actions">
+              <button class="btn primary dl-go" id="btnInstallOk">开始下载</button>
+            </div>
           </div>
         </div>
 
@@ -1809,47 +1879,6 @@ body.booting .app { opacity: 0; }
     <div class="modal-actions">
       <button class="btn ghost" id="btnRenameCancel">取消</button>
       <button class="btn primary" id="btnRenameOk">保存</button>
-    </div>
-  </div>
-</div>
-
-<!-- 下载版本弹窗 -->
-<div class="modal" id="installModal" hidden>
-  <div class="modal-box wide">
-    <div class="modal-title" id="installTitle">下载版本</div>
-    <div class="modal-form">
-      <div class="row">
-        <label>模组加载器</label>
-        <select class="select" id="selLoader">
-          <option value="">不安装（原版）</option>
-          <option value="fabric">Fabric</option>
-          <option value="quilt">Quilt</option>
-          <option value="forge">Forge</option>
-          <option value="neoforge">NeoForge</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>加载器版本</label>
-        <select class="select" id="selLoaderVer"><option value="">（先选加载器）</option></select>
-        <button class="btn ghost xs" id="btnLoadLoaders">刷新</button>
-      </div>
-      <div class="row">
-        <label>版本隔离</label>
-        <select class="select" id="selIsolate">
-          <option value="">跟随主设置</option>
-          <option value="1">开启（存档 / mod 独立）</option>
-          <option value="0">关闭（共用目录）</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>资源文件</label>
-        <label class="switch"><input type="checkbox" id="chkAssets2" checked><span>同时下载游戏资源（音乐、语言等）</span></label>
-      </div>
-      <div class="form-note" id="installNote"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn ghost" id="btnInstallCancel">取消</button>
-      <button class="btn primary" id="btnInstallOk">开始下载</button>
     </div>
   </div>
 </div>
@@ -3272,7 +3301,7 @@ body.booting .app { opacity: 0; }
     $$(".ver-row button", box).forEach((b) => {
       b.addEventListener("click", async (e) => {
         e.stopPropagation();
-        openInstallModal(b.closest(".ver-row").dataset.vid);
+        openDlDetail(b.closest(".ver-row").dataset.vid);
       });
     });
     const more = list.length - show.length;
@@ -3284,42 +3313,128 @@ body.booting .app { opacity: 0; }
     }
   }
 
-  // ---------------- 下载版本弹窗 ----------------
+  // ---------------- 下载详情（专门界面：加载器列表 + 展开选版本） ----------------
   let installVid = "";
-  async function openInstallModal(vid) {
+  // 五种加载器的图标，直接用 PCL2 的方块 / 加载器贴图：
+  //   原版=草方块 Grass、Forge=铁砧 Anvil、NeoForge=NeoForge、Fabric=Fabric、Quilt=Quilt
+  // 图放在 ui/assets/blocks/ 下，页面按 /assets/blocks/xxx.png 引用
+  const DL_ICONS = {
+    "": '<img src="/assets/blocks/Grass.png" alt="原版">',
+    forge: '<img src="/assets/blocks/Anvil.png" alt="Forge">',
+    neoforge: '<img src="/assets/blocks/NeoForge.png" alt="NeoForge">',
+    fabric: '<img src="/assets/blocks/Fabric.png" alt="Fabric">',
+    quilt: '<img src="/assets/blocks/Quilt.png" alt="Quilt">',
+  };
+  const DL_LOADERS = [
+    { key: "", name: "原版", hint: "不装模组加载器，纯净启动" },
+    { key: "forge", name: "Forge" },
+    { key: "neoforge", name: "NeoForge" },
+    { key: "fabric", name: "Fabric" },
+    { key: "quilt", name: "Quilt" },
+  ];
+  let dlVersions = null;   // { forge: [...], ... }；null 表示还在检查
+  let dlPick = "";         // 选中的加载器，"" = 原版
+  let dlPickVer = "";      // 选中的加载器版本
+  let dlOpen = null;       // 当前展开版本列表的加载器
+
+  function renderLoaderRows() {
+    const box = $("#loaderList");
+    box.innerHTML = DL_LOADERS.map((l) => {
+      let st, dis = false;
+      if (!l.key) st = "可以下载";
+      else if (!dlVersions) st = "检查中…";
+      else {
+        const arr = dlVersions[l.key];
+        if (arr && arr.length) st = "可以添加";
+        else { st = "该版本暂不可用"; dis = true; }
+      }
+      const open = dlOpen === l.key;
+      let html = `<div class="loader-row${dlPick === l.key ? " sel" : ""}${open ? " open" : ""}${dis ? " dis" : ""}" data-l="${l.key}" ${l.hint ? `title="${l.hint}"` : ""}>
+        <span class="lr-ico">${DL_ICONS[l.key] || ""}</span>
+        <span class="lr-name">${l.name}</span>
+        <span class="lr-st">${st}</span>
+        <span class="lr-arrow">›</span>
+      </div>`;
+      if (open) {
+        const arr = (dlVersions && dlVersions[l.key]) || [];
+        if (!arr.length) {
+          html += '<div class="lv-empty">该版本暂无可用版本</div>';
+        } else {
+          html += '<div class="lv-wrap">' + arr.slice(0, 60).map((x) =>
+            `<div class="lv-row${dlPick === l.key && dlPickVer === x.version ? " sel" : ""}" data-v="${esc(x.version)}">
+              <span class="lv-ico">${DL_ICONS[l.key]}</span>
+              <span class="lv-ver">${esc(x.version)}</span>
+              <span class="lv-tag ${x.stable ? "stable" : "beta"}">${x.stable ? "稳定" : "测试版"}</span>
+            </div>`).join("") + "</div>";
+        }
+      }
+      return html;
+    }).join("");
+    // 加载器行：原版 = 直接选中；其余 = 展开 / 收起版本列表
+    $$(".loader-row", box).forEach((row) => {
+      row.addEventListener("click", () => {
+        if (row.classList.contains("dis")) return;
+        const key = row.dataset.l;
+        if (!key) { dlPick = ""; dlPickVer = ""; dlOpen = null; }
+        else if (dlOpen === key) { dlOpen = null; }
+        else { dlOpen = key; }
+        renderLoaderRows();
+      });
+    });
+    // 版本项：点击选中
+    $$(".lv-row", box).forEach((row) => {
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dlPick = dlOpen || "";
+        dlPickVer = row.dataset.v;
+        renderLoaderRows();
+      });
+    });
+  }
+
+  async function checkLoaders(vid) {
+    dlVersions = null;
+    dlPick = "";
+    dlPickVer = "";
+    dlOpen = null;
+    renderLoaderRows();
+    try {
+      const r = await api("/api/loaders?mc=" + encodeURIComponent(vid));
+      dlVersions = (r.ok && r.data && r.data.loaders) || {};
+    } catch (e) { dlVersions = {}; }
+    renderLoaderRows();
+  }
+
+  function openDlDetail(vid) {
     installVid = vid;
-    $("#installTitle").textContent = "下载版本：" + vid;
-    $("#selLoader").value = "";
-    $("#selLoaderVer").innerHTML = '<option value="">（先选加载器）</option>';
+    $("#dlCube").innerHTML = DL_ICONS[""];
+    $("#installVidLabel").textContent = vid;
     $("#selIsolate").value = "";
     $("#installNote").textContent = state.config && state.config.isolateVersion
       ? "主设置当前为「开启版本隔离」，选“跟随主设置”即开启。"
       : "主设置当前为「关闭版本隔离」，选“跟随主设置”即关闭。";
-    $("#installModal").hidden = false;
-    // 预取 Fabric 列表，多数用户用这个
-    loadLoaderVersions("fabric", vid, true);
+    $("#dlListView").hidden = true;
+    $("#dlDetail").hidden = false;
+    checkLoaders(vid);
   }
-  function closeInstallModal() { $("#installModal").hidden = true; }
+  function closeDlDetail() {
+    $("#dlDetail").hidden = true;
+    $("#dlListView").hidden = false;
+  }
 
   async function loadLoaderVersions(loader, mc, silent) {
-    const sel = $("#selLoaderVer");
-    sel.innerHTML = '<option value="">载入中…</option>';
+    // 重新检查某个加载器的可用版本（⟳ 按钮）
     const r = await api("/api/loaders?mc=" + encodeURIComponent(mc) +
                         "&only=" + encodeURIComponent(loader));
     const arr = (r.ok && r.data && r.data.loaders && r.data.loaders[loader]) || [];
-    if (!arr.length) {
-      sel.innerHTML = '<option value="">（该版本暂无可用加载器）</option>';
-      if (!silent) toast("没有找到可用版本", "err");
-      return;
-    }
-    sel.innerHTML = arr.slice(0, 60).map((x) =>
-      `<option value="${esc(x.version)}">${esc(x.version)}${x.stable ? "（稳定）" : ""}</option>`
-    ).join("");
+    if (dlVersions) dlVersions[loader] = arr;
+    renderLoaderRows();
+    if (!arr.length && !silent) toast("该版本暂无此加载器", "err");
   }
 
   async function submitInstall() {
-    const loader = $("#selLoader").value;
-    const loaderVersion = $("#selLoaderVer").value;
+    const loader = dlPick;
+    const loaderVersion = loader ? dlPickVer : "";
     const isoRaw = $("#selIsolate").value;
     const isolate = isoRaw === "" ? null : isoRaw === "1";
     if (loader && !loaderVersion) { toast("请选择加载器版本", "err"); return; }
@@ -3332,7 +3447,7 @@ body.booting .app { opacity: 0; }
       isolate: isolate,
     });
     if (!r.ok) { toast(r.msg, "err"); return; }
-    closeInstallModal();
+    closeDlDetail();
     switchTab("tasks");
     toast("开始安装 " + installVid + (loader ? " + " + loader : ""), "ok");
     pollTasks();
@@ -6244,21 +6359,10 @@ body.booting .app { opacity: 0; }
     });
     $("#btnRefreshVer").addEventListener("click", () => loadOnline(true));
 
-    // 下载版本弹窗
-    $("#btnInstallCancel").addEventListener("click", closeInstallModal);
-    $("#installModal").addEventListener("click", (e) => {
-      if (e.target.id === "installModal") closeInstallModal();
-    });
+    // 下载详情
+    $("#btnInstallBack").addEventListener("click", closeDlDetail);
     $("#btnInstallOk").addEventListener("click", submitInstall);
-    $("#selLoader").addEventListener("change", (e) => {
-      if (e.target.value) loadLoaderVersions(e.target.value, installVid, false);
-      else $("#selLoaderVer").innerHTML = '<option value="">（先选加载器）</option>';
-    });
-    $("#btnLoadLoaders").addEventListener("click", () => {
-      const l = $("#selLoader").value;
-      if (!l) { toast("请先选择加载器", "err"); return; }
-      loadLoaderVersions(l, installVid, false);
-    });
+    $("#btnReloadLoaders").addEventListener("click", () => checkLoaders(installVid));
 
     // 版本设置弹窗
     $("#vsCancel").addEventListener("click", closeVersionSettings);
