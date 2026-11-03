@@ -37,6 +37,8 @@ gh release download --repo hujiao233/KCL-Minecraft-Launcher-Project
 2. 双击运行（如遇 SmartScreen 提示，选择「仍要运行」）
 3. 在启动器内选择游戏版本并启动
 
+> 🔁 **和 PCL 共用一套游戏文件**：在 设置 → 游戏目录 里指向 PCL 的 `.minecraft`（`PCL.exe` 所在文件夹下那个），两个启动器就能共用同一份版本 / mod / 存档，PCL 的版本隔离也会被自动识别。步骤与注意事项见《使用说明》。
+
 > 💡 建议 Windows 10 / 11 系统，并已安装 Java 运行环境。
 
 ## 🛠 从源码运行
