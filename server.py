@@ -2046,7 +2046,7 @@ def api_java_ensure():
             task.message = "Java %s 已就绪" % info.get("major")
         else:
             task.state = core.TaskState.FAILED
-            task.error = "自动补齐 Java 失败"
+            task.error = task.error or "自动补齐 Java 失败"
 
     task = core.tasks.create("java", "自动补齐 Java %d" % major, "")
     core.tasks.start(task, _worker)

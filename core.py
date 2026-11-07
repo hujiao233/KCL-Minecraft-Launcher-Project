@@ -2181,6 +2181,38 @@ def java_arch() -> str:
     return "x64"
 
 
+def _tuna_adoptium(major: int) -> List[str]:
+    """
+    清华 Adoptium 镜像的直链。
+    Adoptium 官方 API 会 302 跳转到 github.com，github 被加速器劫持证书时
+    （Steamcommunity302 等）校验必挂；镜像站不跳转，直接就能下。
+    """
+    out: List[str] = []
+
+    def _ver_key(name: str):
+        m = re.search(r"hotspot_([\d.]+)_(\d+)\.zip$", name)
+        if not m:
+            return (0, 0)
+        return tuple(int(x) for x in m.group(1).split(".")) + (int(m.group(2)),)
+
+    for kind in ("jre", "jdk"):
+        try:
+            r = requests.get(
+                "https://mirrors.tuna.tsinghua.edu.cn/Adoptium/%d/%s/x64/windows/"
+                % (major, kind), timeout=(6, 20), headers={"User-Agent": UA})
+            r.raise_for_status()
+            names = re.findall(
+                r'href="(OpenJDK%dU-%s_x64_windows_hotspot_[^"]+\.zip)"' % (major, kind),
+                r.text)
+            if names:
+                best = max(names, key=_ver_key)
+                out.append("https://mirrors.tuna.tsinghua.edu.cn/Adoptium/%d/%s/x64/windows/%s"
+                           % (major, kind, best))
+        except Exception:      # noqa: BLE001
+            continue
+    return out
+
+
 def java_sources(major: int) -> List[str]:
     """
     Adoptium 兜底源（Mojang 官方运行时优先，见 ensure_java）。
@@ -2340,11 +2372,23 @@ def download_mojang_java(major: int = 0, component: str = "", task=None) -> Opti
     manifest_url = ((target["entry"].get("manifest") or {}).get("url")) or ""
     if not manifest_url:
         return None
-    try:
-        r = requests.get(manifest_url, timeout=(6, 20), headers={"User-Agent": UA})
-        r.raise_for_status()
-        files = (r.json().get("files") or {})
-    except Exception:
+    # piston-meta 在开着加速器（Steamcommunity302 等）的机器上会被劫持证书，
+    # Python 不认劫持方的证书，校验必挂；优先走 bmclapi 的同名镜像，官方地址只作回退
+    urls = []
+    for u in (manifest_url.replace("piston-meta.mojang.com", "bmclapi2.bangbang93.com"),
+              manifest_url):
+        if u not in urls:
+            urls.append(u)
+    files: Dict[str, Any] = {}
+    for u in urls:
+        try:
+            r = requests.get(u, timeout=(6, 20), headers={"User-Agent": UA})
+            r.raise_for_status()
+            files = (r.json().get("files") or {})
+            break
+        except Exception:      # noqa: BLE001
+            continue
+    if not files:
         return None
 
     base = os.path.join(java_install_dir(), "mojang-" + target["component"])
@@ -2394,7 +2438,7 @@ def download_java(major: int, task=None) -> Optional[Dict[str, Any]]:
     target = os.path.join(root, "jre-%d" % major)
     tmp = os.path.join(root, "jre-%d.zip" % major)
     last: Optional[Exception] = None
-    for url in java_sources(major):
+    for url in _tuna_adoptium(major) + java_sources(major):
         try:
             if task:
                 task.message = "下载 Java %d" % major
