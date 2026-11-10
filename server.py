@@ -24,6 +24,7 @@ import game
 import core
 import mods
 import version as vmod
+import vdetail
 import world
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -650,7 +651,11 @@ def api_java_check():
 
 @app.get("/api/versions/installed")
 def api_installed():
-    return ok(vmod.list_installed())
+    lst = vmod.list_installed()
+    names = vdetail.display_names()
+    for v in lst:
+        v["name"] = names.get(v["id"]) or v["id"]
+    return ok(lst)
 
 
 @app.get("/api/versions/online")
@@ -832,6 +837,97 @@ def api_refresh_manifest():
     try:
         vmod.fetch_manifest(force=True)
         return ok(True)
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+# ---------------- 版本详情（模组管理 / 重命名 / 补全文件） ----------------
+# 对应界面：版本 → 选中 → 确认进入 → 小侧栏（版本设置 / 模组管理 / 概览）
+
+@app.get("/api/versions/<path:vid>/detail")
+def api_version_detail(vid):
+    try:
+        return ok(vdetail.dirs_of(vid))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.get("/api/versions/<path:vid>/mods")
+def api_version_mods(vid):
+    try:
+        return ok(vdetail.list_mods(vid))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.post("/api/versions/<path:vid>/mods/toggle")
+def api_version_mod_toggle(vid):
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        return ok(vdetail.toggle_mod(vid, body.get("file") or "", bool(body.get("enabled"))))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.post("/api/versions/<path:vid>/mods/delete")
+def api_version_mod_delete(vid):
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        return ok(vdetail.delete_mod(vid, body.get("file") or ""))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.post("/api/versions/<path:vid>/mods/check")
+def api_version_mod_check(vid):
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        return ok(vdetail.check_updates(vid, body.get("files")))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.post("/api/versions/<path:vid>/mods/update")
+def api_version_mod_update(vid):
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        return ok(vdetail.update_mods(vid, body.get("files")))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.post("/api/versions/<path:vid>/mods/compat")
+def api_version_mod_compat(vid):
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        return ok(vdetail.auto_compat(vid, apply=bool(body.get("apply", True))))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.put("/api/versions/<path:vid>/rename")
+def api_version_rename(vid):
+    body = request.get_json(force=True, silent=True) or {}
+    if _busy_version(vid):
+        return err("该版本正在安装中，无法修改")
+    try:
+        return ok(vdetail.rename_version(vid, body.get("newId") or "",
+                                         body.get("displayName") or ""))
+    except Exception as e:  # noqa: BLE001
+        return err(str(e))
+
+
+@app.get("/api/versions/<path:vid>/missing")
+def api_version_missing(vid):
+    return ok(vdetail.missing(vid))
+
+
+@app.post("/api/versions/<path:vid>/repair")
+def api_version_repair(vid):
+    if _busy_version(vid):
+        return err("该版本正在安装中，稍后再试")
+    try:
+        return ok(vdetail.repair(vid))
     except Exception as e:  # noqa: BLE001
         return err(str(e))
 
@@ -1661,6 +1757,7 @@ def api_pick_dir():
 def api_open_folder():
     body = request.get_json(force=True, silent=True) or {}
     kind = body.get("kind", "game")
+    vid = (body.get("vid") or "").strip()
     cfg = core.load()
     mapping = {
         "game": core.game_dir(cfg),
@@ -1670,6 +1767,13 @@ def api_open_folder():
         "logs": core.LOGS_DIR,
         "app": core.ROOT_DIR,
     }
+    if vid:      # 版本详情页：定位到该版本自己的目录
+        eff = core.effective_game_dir(vid, cfg)
+        mapping.update({
+            "version": core.version_dir(vid, cfg),
+            "versionMods": os.path.join(eff, "mods"),
+            "versionSaves": os.path.join(eff, "saves"),
+        })
     path = mapping.get(kind)
     if not path:
         return err("未知目录")

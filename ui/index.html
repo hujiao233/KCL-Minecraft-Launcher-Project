@@ -452,6 +452,98 @@ input[type=range]::-webkit-slider-thumb {
 .ver-meta { font-size: 11.5px; color: var(--muted); margin-top: 7px; line-height: 1.7; }
 .ver-card-actions { display: flex; gap: 6px; margin-top: 10px; }
 
+/* ---------- v1.2.3 版本详情：选择 → 确认 → 小侧栏 ---------- */
+.pick-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.pick-bar .tip { font-size: 12px; color: var(--muted); }
+.pick-bar .sp { flex: 1; }
+.ver-card .tick {
+  position: absolute; top: 10px; right: 10px; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--line); background: #fff; display: grid; place-items: center;
+  font-size: 11px; color: #fff; transition: .16s;
+}
+.ver-card.selected .tick { background: linear-gradient(135deg, var(--ice-2), var(--ice-3)); border-color: transparent; }
+.ver-card.selected .tick::after { content: "✓"; }
+.ver-card-top { padding-right: 24px; }
+.pick-foot {
+  display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 11px 16px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.pick-foot .who { flex: 1; font-size: 12.5px; color: var(--muted); }
+.pick-foot .who b { color: var(--deep); font-size: 14px; }
+
+.vd { display: grid; grid-template-columns: 158px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 760px) { .vd { grid-template-columns: 1fr; } }
+.vd-side {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 8px; box-shadow: var(--shadow); position: sticky; top: 6px;
+}
+.vd-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; border: none; cursor: pointer;
+  background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 600;
+  padding: 9px 10px; border-radius: 10px; text-align: left; transition: .15s; margin-bottom: 3px;
+}
+.vd-item:hover { background: rgba(143, 216, 255, .2); color: var(--ice-3); }
+.vd-item.on { background: linear-gradient(135deg, var(--ice-2), var(--ice-3)); color: #fff; box-shadow: 0 6px 16px rgba(47, 143, 208, .3); }
+.vd-item .ico { width: 18px; text-align: center; font-size: 14px; }
+.vd-item .lb { flex: 1; }
+.vd-item.dragging { opacity: .4; }
+.vd-item .grip { font-size: 10px; color: var(--muted); cursor: grab; }
+.vd-side.editing .vd-item { cursor: grab; border: 1px dashed rgba(120, 160, 190, .5); }
+.vd-side.editing .vd-item:hover { transform: translateY(-1px); }
+.vd-handle {
+  width: 100%; height: 26px; margin-top: 6px; border: none; border-radius: 9px; cursor: pointer;
+  background: linear-gradient(135deg, var(--ice-2), var(--ice-3)); color: #fff;
+  font-size: 12px; letter-spacing: 1px; display: flex; align-items: center; justify-content: center;
+  transition: .18s;
+}
+.vd-handle:hover { filter: brightness(1.05); }
+.vd-handle.edit { background: #d3dfe8; color: #7a8e9e; box-shadow: inset 0 0 0 1px #c2d2de; }
+.vd-tray {
+  margin-top: 8px; padding: 6px; border-radius: 10px; border: 1px dashed #c6d6e2;
+  background: #eef4f8; display: none; flex-direction: column; gap: 4px; min-height: 40px;
+}
+.vd-side.editing .vd-tray { display: flex; }
+.vd-tray.hot { background: #e0e9f0; border-color: #9db9cb; }
+.vd-tray::after { content: "拖到这里隐藏"; font-size: 10.5px; color: #93a8b8; text-align: center; padding: 4px 0; }
+.vd-tray.has::after { display: none; }
+.vd-tray .vd-item { background: #e3eaf0; color: #8497a6; margin-bottom: 0; font-weight: 500; }
+.vd-tray .vd-item.on { background: #e3eaf0; color: #8497a6; box-shadow: none; }
+
+.vd-main { min-height: 430px; }
+.vd-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.vd-head .vd-title { font-size: 17px; font-weight: 700; color: var(--deep); }
+.vd-head .vd-sub { font-size: 11.5px; color: var(--muted); }
+.vd-head .sp { flex: 1; }
+.vd-pane { display: none; }
+.vd-pane.on { display: block; animation: fade .18s ease; }
+.vd-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 12px;
+}
+.vd-card > h4 { margin: 0 0 10px; font-size: 13.5px; color: var(--deep); }
+.vd-kv { display: flex; gap: 10px; padding: 6px 0; font-size: 12.5px; border-bottom: 1px dashed var(--line); }
+.vd-kv:last-child { border-bottom: none; }
+.vd-kv .k { min-width: 74px; color: var(--muted); }
+.vd-kv .v { flex: 1; word-break: break-all; }
+.vd-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.mod-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin-bottom: 6px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); transition: .15s;
+}
+.mod-row:hover { border-color: var(--ice-1); }
+.mod-row.off { opacity: .58; }
+.mod-info { flex: 1; min-width: 0; }
+.mod-name { font-size: 12.8px; font-weight: 600; color: var(--deep); }
+.mod-name small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.mod-meta { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mod-badge { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: rgba(42, 163, 107, .14); color: var(--ok); white-space: nowrap; }
+.mod-badge.upd { background: rgba(217, 147, 24, .16); color: var(--warn); }
+.mod-acts { display: flex; gap: 5px; flex-shrink: 0; }
+.mod-list { max-height: 420px; overflow-y: auto; padding-right: 4px; }
+
+
 .dl-toolbar {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -1090,7 +1182,119 @@ body.booting .app { opacity: 0; }
         </div>
 
         <div class="tab-body" id="tab-installed">
-          <div class="installed-list" id="installedList"></div>
+          <!-- 第一步：只列版本，选一个再确认 -->
+          <div id="verPick">
+            <div class="pick-bar">
+              <span class="tip">选中一个版本，确认后进入版本面板：设置、模组、概览都在里面。</span>
+              <span class="sp"></span>
+              <button class="btn ghost sm" id="btnPickRefresh">刷新</button>
+            </div>
+            <div class="installed-list" id="installedList"></div>
+            <div class="pick-foot">
+              <span class="who" id="pickWho">还没选版本</span>
+              <button class="btn primary" id="btnEnterVer" disabled>确认并进入</button>
+            </div>
+          </div>
+
+          <!-- 第二步：版本面板（左侧小侧栏） -->
+          <div id="verDetail" hidden>
+            <div class="vd">
+              <aside class="vd-side" id="vdSide">
+                <div id="vdList"></div>
+                <button class="vd-handle" id="vdHandle" title="自定义侧栏：拖动排序 / 拖到下方隐藏">⋮⋮</button>
+                <div class="vd-tray" id="vdTray"></div>
+              </aside>
+              <div class="vd-main">
+                <div class="vd-head">
+                  <button class="btn ghost sm" id="vdBack" title="返回版本列表">←</button>
+                  <div>
+                    <div class="vd-title" id="vdTitle">—</div>
+                    <div class="vd-sub" id="vdSub"></div>
+                  </div>
+                  <span class="sp"></span>
+                  <button class="btn ghost sm" id="vdOpenDir">打开目录</button>
+                  <button class="btn primary sm" id="vdLaunch">启动</button>
+                </div>
+
+                <!-- 版本设置 -->
+                <div class="vd-pane" data-pane="settings">
+                  <div class="vd-card">
+                    <h4>当前生效设置</h4>
+                    <div id="vdSettingsBody"><div class="empty">正在读取…</div></div>
+                    <div class="vd-tools" style="margin-top:10px">
+                      <button class="btn primary sm" id="vdOpenSettings">打开完整设置</button>
+                      <label class="switch" style="margin-left:auto"><input type="checkbox" id="vdIsolate"><span>版本隔离（存档 / mod 各自独立）</span></label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 模组管理 -->
+                <div class="vd-pane" data-pane="mods">
+                  <div class="vd-card">
+                    <div class="vd-tools">
+                      <input class="input search" id="vdModSearch" placeholder="搜索模组名 / 文件名" style="width:190px">
+                      <span class="hint" id="vdModStat">—</span>
+                      <span style="flex:1"></span>
+                      <button class="btn ghost sm" id="vdCheckUpd">检查更新</button>
+                      <button class="btn ghost sm" id="vdCompat">自动兼容</button>
+                      <button class="btn ghost sm" id="vdOpenMods">打开模组文件夹</button>
+                    </div>
+                    <div class="mod-list" id="vdModList" style="margin-top:10px">
+                      <div class="empty">正在读取…</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 概览 -->
+                <div class="vd-pane" data-pane="overview">
+                  <div class="vd-card">
+                    <h4>版本名</h4>
+                    <div class="vd-kv"><span class="k">文件夹名</span>
+                      <span class="v"><input class="input" id="vdId" style="width:100%"></span></div>
+                    <div class="vd-kv"><span class="k">显示名</span>
+                      <span class="v"><input class="input" id="vdName" style="width:100%" placeholder="只在启动器里显示，可留空"></span></div>
+                    <div class="vd-tools" style="margin-top:10px">
+                      <button class="btn primary sm" id="vdSaveName">保存</button>
+                      <span class="hint">改文件夹名会连带改版本 json / jar / natives 并迁移设置</span>
+                    </div>
+                  </div>
+                  <div class="vd-card">
+                    <h4>文件夹</h4>
+                    <div class="vd-kv"><span class="k">版本文件夹</span><span class="v" id="vdDirVer">—</span>
+                      <button class="btn ghost xs" data-vdopen="version">打开</button></div>
+                    <div class="vd-kv"><span class="k">模组文件夹</span><span class="v" id="vdDirMods">—</span>
+                      <button class="btn ghost xs" data-vdopen="versionMods">打开</button></div>
+                    <div class="vd-kv"><span class="k">存档文件夹</span><span class="v" id="vdDirSaves">—</span>
+                      <button class="btn ghost xs" data-vdopen="versionSaves">打开</button></div>
+                  </div>
+                  <div class="vd-card">
+                    <h4>补全文件</h4>
+                    <div class="vd-kv"><span class="k">缺失情况</span><span class="v" id="vdMissing">点「检查」看看缺什么</span></div>
+                    <div class="vd-tools" style="margin-top:10px">
+                      <button class="btn ghost sm" id="vdCheckMissing">检查</button>
+                      <button class="btn primary sm" id="vdRepair">一键补全</button>
+                    </div>
+                  </div>
+                  <div class="vd-card">
+                    <h4>服务端</h4>
+                    <div class="vd-kv"><span class="k">专用服务端</span>
+                      <span class="v">给这个版本下服务端，自动放到 游戏目录/servers/&lt;版本&gt;/ 并生成 eula 与启动脚本</span></div>
+                    <div class="vd-tools" style="margin-top:10px">
+                      <button class="btn ghost sm" id="vdServerDl">下载服务端</button>
+                    </div>
+                  </div>
+                  <div class="vd-card">
+                    <h4>删除版本</h4>
+                    <div class="vd-kv"><span class="k">危险操作</span>
+                      <span class="v">删除后版本文件夹连同存档 / mod 一起消失，不可恢复。</span></div>
+                    <div class="vd-tools" style="margin-top:10px">
+                      <button class="btn danger sm" id="vdDelete">删除这个版本</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="tab-body" id="tab-download" hidden>
@@ -3075,7 +3279,7 @@ body.booting .app { opacity: 0; }
       return;
     }
     sel.innerHTML = state.installed
-      .map((v) => `<option value="${esc(v.id)}">${esc(v.id)}</option>`).join("");
+      .map((v) => `<option value="${esc(v.id)}">${esc(v.name && v.name !== v.id ? v.name : v.id)}</option>`).join("");
     if (state.selectedVersion && state.installed.some((v) => v.id === state.selectedVersion)) {
       sel.value = state.selectedVersion;
     } else {
@@ -3186,46 +3390,403 @@ body.booting .app { opacity: 0; }
     renderHero();
   }
 
+  /* ================= 版本：选择 → 确认 → 版本面板 ================= */
+  const VD_PANES = [
+    { id: "settings", ico: "⚙", label: "版本设置" },
+    { id: "mods", ico: "🧩", label: "模组管理" },
+    { id: "overview", ico: "📄", label: "概览" },
+  ];
+  const VD_SIDE_KEY = "kcl.vdSide";
+  let pickVid = "";
+  const vd = {
+    vid: "", pane: "settings", editing: false,
+    side: { order: VD_PANES.map((p) => p.id), hidden: [] },
+    mods: null, updates: null, filter: "", missing: null, dirs: null,
+  };
+
+  function loadVdSide() {
+    const ids = VD_PANES.map((p) => p.id);
+    try {
+      const raw = JSON.parse(localStorage.getItem(VD_SIDE_KEY) || "{}");
+      const order = (raw.order || []).filter((i) => ids.includes(i));
+      ids.forEach((i) => { if (!order.includes(i)) order.push(i); });
+      vd.side = { order, hidden: (raw.hidden || []).filter((i) => ids.includes(i)) };
+    } catch (e) {
+      vd.side = { order: ids.slice(), hidden: [] };
+    }
+  }
+  function saveVdSide() {
+    try { localStorage.setItem(VD_SIDE_KEY, JSON.stringify(vd.side)); } catch (e) { /* 忽略 */ }
+  }
+
   function renderInstalled() {
     const box = $("#installedList");
     if (!state.installed.length) {
       box.innerHTML = '<div class="empty">还没有安装任何版本，去「下载版本」看看吧。</div>';
+      pickVid = "";
+      renderPickFoot();
       return;
     }
-    box.innerHTML = state.installed.map((v) => `
-      <div class="ver-card ${v.id === state.selectedVersion ? "selected" : ""}" data-vid="${esc(v.id)}">
+    if (!state.installed.some((v) => v.id === pickVid)) pickVid = "";
+    box.innerHTML = state.installed.map((v) => {
+      const shown = v.name && v.name !== v.id ? v.name : v.id;
+      return `
+      <div class="ver-card ${v.id === pickVid ? "selected" : ""}" data-vid="${esc(v.id)}">
+        <div class="tick"></div>
         <div class="ver-card-top">
-          <span class="ver-name">${esc(v.id)}</span>
+          <span class="ver-name">${esc(shown)}</span>
           <span class="tag ${esc(v.type)}">${v.type === "release" ? "正式版" : v.type === "snapshot" ? "快照" : esc(v.type)}</span>
         </div>
         <div class="ver-meta">
-          资源索引：${esc(v.assetIndex || "-")}<br>
+          ${v.name && v.name !== v.id ? `版本 ID：${esc(v.id)}<br>` : ""}
           安装时间：${esc(v.installTime)}　本体：${v.hasJar ? fmtSize(v.jarSize) : "缺失"}
         </div>
-        <div class="ver-card-actions">
-          <button class="btn primary xs" data-act="choose">选择</button>
-          <button class="btn ghost xs" data-act="settings">版本设置</button>
-          <button class="btn ghost xs" data-act="server">下载服务端</button>
-          <button class="btn ghost xs" data-act="folder">打开目录</button>
-          <button class="btn danger xs" data-act="delete">删除</button>
-        </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
 
     $$(".ver-card", box).forEach((card) => {
-      const vid = card.dataset.vid;
-      card.addEventListener("click", (e) => {
-        const act = e.target.closest("button") && e.target.closest("button").dataset.act;
-        if (act === "delete") { confirmDelete(vid); return; }
-        if (act === "folder") { post("/api/open/folder", { kind: "versions" }); return; }
-        if (act === "settings") { openVersionSettings(vid); return; }
-        if (act === "server") { downloadServer(vid); return; }
-        chooseVersion(vid);
+      card.addEventListener("click", () => {
+        pickVid = card.dataset.vid;
+        renderInstalled();
+      });
+      card.addEventListener("dblclick", () => enterVersion(card.dataset.vid));
+    });
+    renderPickFoot();
+  }
+
+  function renderPickFoot() {
+    const who = $("#pickWho");
+    const btn = $("#btnEnterVer");
+    const v = state.installed.find((x) => x.id === pickVid);
+    if (v) {
+      who.innerHTML = `已选择：<b>${esc(v.name || v.id)}</b>`;
+      btn.disabled = false;
+    } else {
+      who.textContent = "还没选版本";
+      btn.disabled = true;
+    }
+  }
+
+  async function enterVersion(vid) {
+    if (!vid) return;
+    pickVid = vid;
+    await chooseVersion(vid);
+    vd.vid = vid;
+    vd.pane = "settings";
+    vd.mods = null; vd.updates = null; vd.missing = null; vd.dirs = null; vd.filter = "";
+    $("#vdModSearch").value = "";
+    $("#verPick").hidden = true;
+    $("#verDetail").hidden = false;
+    $("#vdId").value = vid;
+    $("#vdName").value = "";
+    const rec = state.installed.find((x) => x.id === vid);
+    $("#vdTitle").textContent = (rec && rec.name && rec.name !== vid) ? rec.name : vid;
+    if (rec && rec.name && rec.name !== vid) $("#vdName").value = rec.name;
+    renderVdSide();
+    setVdPane("settings");
+    loadVdDetail();
+    loadVdSettings();
+    loadVdMods();
+  }
+
+  function exitVersion() {
+    vd.vid = "";
+    $("#verDetail").hidden = true;
+    $("#verPick").hidden = false;
+    renderInstalled();
+  }
+
+  /* ---------------- 小侧栏（可拖动排序 / 拖到下方隐藏） ---------------- */
+  function renderVdSide() {
+    const list = $("#vdList");
+    const tray = $("#vdTray");
+    const meta = (id) => VD_PANES.find((p) => p.id === id) || { id, ico: "•", label: id };
+    const item = (id) => {
+      const p = meta(id);
+      return `<button class="vd-item ${vd.pane === id && !vd.side.hidden.includes(id) ? "on" : ""}"
+        data-pane="${p.id}" draggable="${vd.editing}" title="${esc(p.label)}">
+        <span class="ico">${p.ico}</span><span class="lb">${esc(p.label)}</span>
+        ${vd.editing ? '<span class="grip">⠿</span>' : ""}</button>`;
+    };
+    const vis = vd.side.order.filter((i) => !vd.side.hidden.includes(i));
+    list.innerHTML = vis.length ? vis.map(item).join("")
+      : '<div class="hint" style="padding:6px 8px">侧栏空了，点下面按钮拖回来</div>';
+    tray.innerHTML = vd.side.hidden.map(item).join("");
+    tray.classList.toggle("has", vd.side.hidden.length > 0);
+    $("#vdSide").classList.toggle("editing", vd.editing);
+    const h = $("#vdHandle");
+    h.classList.toggle("edit", vd.editing);
+    h.textContent = vd.editing ? "隐藏区" : "⋮⋮";
+    h.title = vd.editing ? "再点一次恢复侧栏" : "自定义侧栏：拖动排序 / 拖到下方隐藏";
+    bindVdSide();
+  }
+
+  function bindVdSide() {
+    $$("#vdSide .vd-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        if (!vd.editing) setVdPane(el.dataset.pane);
+      });
+      if (!vd.editing) return;
+      el.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", el.dataset.pane);
+        e.dataTransfer.effectAllowed = "move";
+        el.classList.add("dragging");
+      });
+      el.addEventListener("dragend", () => el.classList.remove("dragging"));
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.style.boxShadow = "inset 0 2px 0 var(--ice-3)";
+      });
+      el.addEventListener("dragleave", () => { el.style.boxShadow = ""; });
+      el.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.style.boxShadow = "";
+        const src = e.dataTransfer.getData("text/plain");
+        if (!src || src === el.dataset.pane) return;
+        moveVdItem(src, el.dataset.pane);
+      });
+    });
+    const tray = $("#vdTray");
+    tray.addEventListener("dragover", (e) => { e.preventDefault(); tray.classList.add("hot"); });
+    tray.addEventListener("dragleave", () => tray.classList.remove("hot"));
+    tray.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      tray.classList.remove("hot");
+      const src = e.dataTransfer.getData("text/plain");
+      if (!src) return;
+      if (!vd.side.hidden.includes(src)) vd.side.hidden.push(src);
+      if (vd.pane === src) setVdPane(vd.side.order.find((i) => !vd.side.hidden.includes(i)) || "settings");
+      saveVdSide();
+      renderVdSide();
+    });
+    const list = $("#vdList");
+    list.addEventListener("dragover", (e) => { if (e.target === list) e.preventDefault(); });
+    list.addEventListener("drop", (e) => {
+      if (e.target !== list) return;
+      e.preventDefault();
+      const src = e.dataTransfer.getData("text/plain");
+      if (!src) return;
+      vd.side.hidden = vd.side.hidden.filter((i) => i !== src);
+      saveVdSide();
+      renderVdSide();
+    });
+  }
+
+  function moveVdItem(src, dst) {
+    const toHidden = vd.side.hidden.includes(dst);
+    vd.side.order = vd.side.order.filter((i) => i !== src);
+    const idx = vd.side.order.indexOf(dst);
+    vd.side.order.splice(idx < 0 ? vd.side.order.length : idx, 0, src);
+    vd.side.hidden = vd.side.hidden.filter((i) => i !== src);
+    if (toHidden) vd.side.hidden.push(src);
+    saveVdSide();
+    renderVdSide();
+  }
+
+  function setVdPane(id) {
+    vd.pane = id;
+    $$(".vd-pane").forEach((p) => p.classList.toggle("on", p.dataset.pane === id));
+    $$("#vdSide .vd-item").forEach((b) => b.classList.toggle("on", b.dataset.pane === id));
+  }
+
+  /* ---------------- 版本设置 ---------------- */
+  async function loadVdDetail() {
+    const r = await api("/api/versions/" + encodeURIComponent(vd.vid) + "/detail");
+    if (!r.ok) return;
+    vd.dirs = r.data;
+    const d = r.data;
+    $("#vdSub").textContent = ["版本 ID：" + vd.vid,
+      d.mc ? "MC " + d.mc : "", d.loader ? d.loader : "", d.isolate ? "已隔离" : ""]
+      .filter(Boolean).join(" · ");
+    $("#vdDirVer").textContent = d.version || "-";
+    $("#vdDirMods").textContent = d.mods || "-";
+    $("#vdDirSaves").textContent = d.saves || "-";
+  }
+
+  async function loadVdSettings() {
+    const r = await api("/api/versions/" + encodeURIComponent(vd.vid) + "/settings");
+    if (!r.ok) { $("#vdSettingsBody").innerHTML = `<div class="empty">${esc(r.msg)}</div>`; return; }
+    const s = r.data;
+    $("#vdSettingsBody").innerHTML = `
+      <div class="vd-kv"><span class="k">内存</span><span class="v">${s.maxMemory || "-"} MB</span></div>
+      <div class="vd-kv"><span class="k">Java</span><span class="v">${esc(s.javaPath || "自动选择")}</span></div>
+      <div class="vd-kv"><span class="k">窗口</span><span class="v">${s.windowWidth || "-"}×${s.windowHeight || "-"}${s.fullscreen ? " · 全屏" : ""}</span></div>
+      <div class="vd-kv"><span class="k">JVM 参数</span><span class="v">${esc(s.jvmArgs || "未设置")}</span></div>
+      <div class="vd-kv"><span class="k">游戏目录</span><span class="v">${esc(s.gameDirEff || "-")}</span></div>
+      <div class="vd-kv"><span class="k">模组数</span><span class="v">${s.modCount ?? "-"}</span></div>`;
+    $("#vdIsolate").checked = !!s.isolate;
+  }
+
+  /* ---------------- 模组管理 ---------------- */
+  async function loadVdMods() {
+    $("#vdModList").innerHTML = '<div class="empty">正在读取模组…</div>';
+    const r = await api("/api/versions/" + encodeURIComponent(vd.vid) + "/mods");
+    if (!r.ok) { $("#vdModList").innerHTML = `<div class="empty">${esc(r.msg)}</div>`; return; }
+    vd.mods = r.data;
+    renderVdMods();
+  }
+
+  function renderVdMods() {
+    const d = vd.mods;
+    if (!d) return;
+    $("#vdModStat").textContent =
+      `共 ${d.count} 个 · 启用 ${d.enabledCount} · ${d.mc || "?"} / ${d.loader || "原版"}`;
+    const kw = (vd.filter || "").toLowerCase();
+    const rows = (d.list || []).filter((m) =>
+      !kw || (m.name + " " + m.file).toLowerCase().includes(kw));
+    const upd = {};
+    ((vd.updates && vd.updates.items) || []).forEach((i) => { if (i.latest) upd[i.file] = i.latest; });
+    if (!rows.length) {
+      $("#vdModList").innerHTML = `<div class="empty">${d.count ? "没有匹配的模组" : "这个版本还没装模组，去「资源」逛逛"}</div>`;
+      return;
+    }
+    $("#vdModList").innerHTML = rows.map((m) => {
+      const u = upd[m.file];
+      return `<div class="mod-row ${m.enabled ? "" : "off"}" data-file="${esc(m.file)}">
+        <input type="checkbox" data-act="toggle" ${m.enabled ? "checked" : ""}
+               style="width:15px;height:15px;accent-color:var(--ice-3);cursor:pointer">
+        <div class="mod-info">
+          <div class="mod-name">${esc(m.name)}<small>${esc(m.version || "")}</small>
+            ${u ? `<span class="mod-badge upd">→ ${esc(u.version || u.name || "新版本")}</span>` : ""}
+            ${m.enabled ? "" : '<span class="mod-badge">已禁用</span>'}</div>
+          <div class="mod-meta">${esc(m.file)} · ${esc(m.sizeText)}${m.desc ? " · " + esc(m.desc) : ""}</div>
+        </div>
+        <div class="mod-acts">
+          ${u ? '<button class="btn primary xs" data-act="update">更新</button>' : ""}
+          <button class="btn ghost xs" data-act="folder">目录</button>
+          <button class="btn danger xs" data-act="del">卸载</button>
+        </div>
+      </div>`;
+    }).join("");
+
+    $$("#vdModList .mod-row").forEach((row) => {
+      const file = row.dataset.file;
+      const act = (e) => e.target.closest("[data-act]")?.dataset.act;
+      row.querySelector('[data-act="toggle"]').addEventListener("change", async (e) => {
+        const r = await post(`/api/versions/${encodeURIComponent(vd.vid)}/mods/toggle`,
+          { file, enabled: e.target.checked });
+        if (!r.ok) { toast(r.msg, "err"); e.target.checked = !e.target.checked; return; }
+        const m = vd.mods.list.find((x) => x.file === file);
+        if (m) { m.enabled = r.data.enabled; m.file = r.data.file; }
+        vd.mods.enabledCount = vd.mods.list.filter((x) => x.enabled).length;
+        renderVdMods();
+        toast((r.data.enabled ? "已启用 " : "已禁用 ") + (m ? m.name : file), "ok");
+      });
+      row.addEventListener("click", async (e) => {
+        const a = act(e);
+        if (a === "folder") { vdOpen("versionMods"); return; }
+        if (a === "update") { vdUpdateFiles([file]); return; }
+        if (a === "del") {
+          const go = await uiConfirm({
+            title: "卸载模组", text: `确定删除 ${file} 吗？文件会直接从 mods 目录移除。`,
+            okText: "卸载", danger: true,
+          });
+          if (!go) return;
+          const r = await post(`/api/versions/${encodeURIComponent(vd.vid)}/mods/delete`, { file });
+          if (!r.ok) { toast(r.msg, "err"); return; }
+          toast("已卸载 " + file, "ok");
+          loadVdMods();
+        }
       });
     });
   }
 
+  async function vdCheckUpdates() {
+    if (!vd.vid) return;
+    toast("正在检查更新，模组多的话要等一会…", "");
+    const r = await post(`/api/versions/${encodeURIComponent(vd.vid)}/mods/check`, {});
+    if (!r.ok) { toast(r.msg, "err"); return; }
+    vd.updates = r.data;
+    renderVdMods();
+    toast(vd.updates.updateCount ? `有 ${vd.updates.updateCount} 个模组可更新`
+      : "全部都是最新版", "ok");
+  }
+
+  async function vdUpdateFiles(files) {
+    const r = await post(`/api/versions/${encodeURIComponent(vd.vid)}/mods/update`, { files });
+    if (!r.ok) { toast(r.msg, "err"); return; }
+    const ok = (r.data.applied || []).length;
+    const bad = (r.data.failed || []).length;
+    toast(`更新完成：成功 ${ok} 个${bad ? ` · 失败 ${bad} 个` : ""}`, bad ? "err" : "ok");
+    vd.updates = null;
+    loadVdMods();
+  }
+
+  async function vdCompat() {
+    if (!vd.vid) return;
+    const go = await uiConfirm({
+      title: "自动兼容",
+      text: "会逐个检查已装模组，把能更新的换成「前置模组也支持」的版本，替换前会先联网核对。继续吗？",
+      okText: "开始",
+    });
+    if (!go) return;
+    toast("正在核对前置与版本，请稍候…", "");
+    const r = await post(`/api/versions/${encodeURIComponent(vd.vid)}/mods/compat`, { apply: true });
+    if (!r.ok) { toast(r.msg, "err"); return; }
+    const planned = (r.data.planned || []);
+    const ok = (r.data.applied || []).length;
+    const bad = (r.data.failed || []).length;
+    if (!planned.length) { toast("没有需要调整的模组", "ok"); return; }
+    toast(`自动兼容：调整 ${ok}/${planned.length} 个${bad ? ` · 失败 ${bad}` : ""}`,
+      bad ? "err" : "ok");
+    loadVdMods();
+  }
+
+  /* ---------------- 概览 ---------------- */
+  function vdOpen(kind) {
+    post("/api/open/folder", { kind, vid: vd.vid });
+  }
+
+  async function vdSaveName() {
+    const newId = ($("#vdId").value || "").trim();
+    const displayName = ($("#vdName").value || "").trim();
+    if (!newId) { toast("文件夹名不能为空", "err"); return; }
+    const r = await put(`/api/versions/${encodeURIComponent(vd.vid)}/rename`,
+      { newId, displayName });
+    if (!r.ok) { toast(r.msg, "err"); return; }
+    if (r.data.renamed) {
+      vd.vid = r.data.id;
+      pickVid = r.data.id;
+      state.selectedVersion = r.data.id;
+      $("#vdTitle").textContent = r.data.displayName || r.data.id;
+      toast(`已改名为 ${r.data.id}`, "ok");
+    } else {
+      $("#vdTitle").textContent = r.data.displayName || vd.vid;
+      toast("显示名已保存", "ok");
+    }
+    await loadInstalled();
+    loadVdDetail();
+  }
+
+  async function vdCheckMissing() {
+    $("#vdMissing").textContent = "正在检查…";
+    const r = await api(`/api/versions/${encodeURIComponent(vd.vid)}/missing`);
+    if (!r.ok) { $("#vdMissing").textContent = r.msg; return; }
+    vd.missing = r.data;
+    const n = r.data.count || 0;
+    $("#vdMissing").textContent = n === 0 ? "文件完整，无缺失"
+      : `缺失 ${n} 个文件：` + (r.data.missing || []).slice(0, 3).join("、") + (n > 3 ? " …" : "");
+  }
+
+  async function vdRepair() {
+    const go = await uiConfirm({
+      title: "补全文件",
+      text: "会联网重新核对并补下缺失的游戏文件（库、资源、本体）。继续吗？",
+      okText: "开始补全",
+    });
+    if (!go) return;
+    const r = await post(`/api/versions/${encodeURIComponent(vd.vid)}/repair`, {});
+    if (!r.ok) { toast(r.msg, "err"); return; }
+    toast(`已开始补全（缺失 ${r.data.count} 个），进度看「下载任务」`, "ok");
+    switchTab("tasks");
+  }
+
   async function chooseVersion(vid) {
     state.selectedVersion = vid;
+    pickVid = vid;
     await post("/api/config", { lastVersion: vid });
     renderInstalled();
     renderVersionSelect();
@@ -6359,6 +6920,56 @@ body.booting .app { opacity: 0; }
     });
     $("#btnRefreshVer").addEventListener("click", () => loadOnline(true));
 
+    // ---- 版本详情（v1.2.3）：选择确认 / 侧栏自定义 / 模组管理 ----
+    loadVdSide();
+    const _on = (sel, ev, fn) => {
+      const el = typeof sel === "string" ? $(sel) : sel;
+      if (el) el.addEventListener(ev, fn);
+    };
+    _on("#btnPickRefresh", "click", () => loadInstalled());
+    _on("#btnEnterVer", "click", () => enterVersion(pickVid));
+    _on("#vdBack", "click", exitVersion);
+    _on("#vdHandle", "click", () => {
+      vd.editing = !vd.editing;
+      if (!vd.editing) {          // 退出编辑：排版恢复，隐藏区的项不再显示
+        const vis = vd.side.order.filter((i) => !vd.side.hidden.includes(i));
+        if (!vis.includes(vd.pane)) setVdPane(vis[0] || "settings");
+      }
+      renderVdSide();
+    });
+    _on("#vdModSearch", "input", (e) => { vd.filter = e.target.value.trim(); renderVdMods(); });
+    _on("#vdCheckUpd", "click", vdCheckUpdates);
+    _on("#vdCompat", "click", vdCompat);
+    _on("#vdOpenMods", "click", () => vdOpen("versionMods"));
+    _on("#vdOpenDir", "click", () => vdOpen("version"));
+    _on("#vdLaunch", "click", () => {
+      if (!vd.vid) return;
+      state.selectedVersion = vd.vid;
+      doLaunch();
+    });
+    _on("#vdOpenSettings", "click", () => openVersionSettings(vd.vid));
+    _on("#vdIsolate", "change", async (e) => {
+      const r = await put(`/api/versions/${encodeURIComponent(vd.vid)}/settings`,
+        { isolate: e.target.checked });
+      if (!r.ok) { toast(r.msg, "err"); e.target.checked = !e.target.checked; return; }
+      toast(e.target.checked ? "已开启版本隔离" : "已关闭版本隔离，共用主目录", "ok");
+      loadVdDetail();
+      loadVdSettings();
+      loadVdMods();
+    });
+    _on("#vdSaveName", "click", vdSaveName);
+    _on("#vdCheckMissing", "click", vdCheckMissing);
+    _on("#vdRepair", "click", vdRepair);
+    _on("#vdDelete", "click", async () => {
+      const vid = vd.vid;
+      await confirmDelete(vid);
+      await loadInstalled();
+      if (!state.installed.some((v) => v.id === vid)) exitVersion();
+    });
+    _on("#vdServerDl", "click", () => downloadServer(vd.vid));
+    $$("[data-vdopen]").forEach((b) =>
+      b.addEventListener("click", () => vdOpen(b.dataset.vdopen)));
+
     // 下载详情
     $("#btnInstallBack").addEventListener("click", closeDlDetail);
     $("#btnInstallOk").addEventListener("click", submitInstall);
@@ -6573,9 +7184,9 @@ body.booting .app { opacity: 0; }
         text: "Java 缺失、损坏或位数不对就点这里，会自动重新下载一套可用的运行时。" },
     ] },
     { sec: "server", steps: [
-      { page: "versions", sel: '#installedList [data-act="server"]',
+      { page: "versions", sel: '#installedList .ver-card',
         title: "下载服务端",
-        text: "已装版本卡片上点「下载服务端」，文件放到 游戏目录/servers/<版本>/，并自动生成 eula.txt 和「启动服务端.bat」。" },
+        text: "选中版本点「确认并进入」，在「概览 → 服务端」里点下载：文件放到 游戏目录/servers/<版本>/，并自动生成 eula.txt 和「启动服务端.bat」。" },
       { page: "settings", sel: "#inpGameDir",
         title: "服务端在哪",
         text: "就是这个游戏目录下面的 servers 文件夹；想换位置改这里，或点旁边的按钮选一个新文件夹。" },
