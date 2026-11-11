@@ -96,10 +96,14 @@ class _NBT:
             return out
         if t == 11:
             n = self._su(">i", 4)
-            return list(struct.unpack_from(">%di" % n, self.b, self.i)) if n else []
+            vals = list(struct.unpack_from(">%di" % n, self.b, self.i)) if n else []
+            self.i += 4 * n          # unpack_from 不移动游标，必须手动推进
+            return vals
         if t == 12:
             n = self._su(">i", 4)
-            return list(struct.unpack_from(">%dq" % n, self.b, self.i)) if n else []
+            vals = list(struct.unpack_from(">%dq" % n, self.b, self.i)) if n else []
+            self.i += 8 * n          # 同上：block_states.data / Heightmaps 都是 long[]
+            return vals
         raise ValueError("未知 NBT 类型 " + str(t))
 
 
@@ -370,7 +374,11 @@ BLOCK_COLORS = {
 }
 
 
-def block_color(name: str) -> Tuple[int, int, int]:
+def block_color(name: str):
+    # 空气必须返回 None 让该像素留空；否则会被下面的「未知方块」哈希逻辑
+    # 当成普通方块涂成同一种颜色，整张图变成纯色、覆盖率虚高到 100%
+    if name in AIR:
+        return None
     c = BLOCK_COLORS.get(name)
     if c:
         return c
@@ -572,27 +580,28 @@ def render_map(world_dir: str, dim: str = "overworld",
                 continue
             ccx, ccz = (wx >> 4) & 31, (wz >> 4) & 31
             try:
-                reg = _REGION_CACHE.get(path)
-                if reg is None:
-                    reg = Region(path)
-                    _REGION_CACHE[path] = reg
-                    if len(_REGION_CACHE) > 24:
-                        for k in list(_REGION_CACHE)[:-12]:
-                            try:
-                                _REGION_CACHE[k].close()
-                            except Exception:
-                                pass
-                            _REGION_CACHE.pop(k, None)
-                ch = reg.chunk(ccx, ccz)
-                if not ch:
-                    continue
+                # 同一区块的 NBT 只解压一次：逐像素重复 reg.chunk() 会让
+                # 480x480 的图慢到几十秒甚至更久
                 key = (path, ccx, ccz)
-                pix = _CHUNK_CACHE.get(key)
-                if pix is None:
-                    pix = ChunkPixels.render(ch)
+                pix = _CHUNK_CACHE.get(key, _CHUNK_MISS)
+                if pix is _CHUNK_MISS:
+                    reg = _REGION_CACHE.get(path)
+                    if reg is None:
+                        reg = Region(path)
+                        _REGION_CACHE[path] = reg
+                        if len(_REGION_CACHE) > 24:
+                            for k in list(_REGION_CACHE)[:-12]:
+                                try:
+                                    _REGION_CACHE[k].close()
+                                except Exception:
+                                    pass
+                                _REGION_CACHE.pop(k, None)
+                    ch = reg.chunk(ccx, ccz)
+                    pix = ChunkPixels.render(ch) if ch else None
                     _CHUNK_CACHE[key] = pix
                     if len(_CHUNK_CACHE) > 4096:
                         _CHUNK_CACHE.clear()
+                        _CHUNK_CACHE[key] = pix
                 if not pix:
                     continue
                 names, ys = pix
@@ -630,6 +639,7 @@ def render_map(world_dir: str, dim: str = "overworld",
 
 _REGION_CACHE: Dict[str, Region] = {}
 _CHUNK_CACHE: Dict[Tuple[str, int, int], Any] = {}
+_CHUNK_MISS = object()
 
 
 def _to_png(rgb: bytes, w: int, h: int) -> bytes:
@@ -652,6 +662,7 @@ def clear_cache() -> None:
     for r in _REGION_CACHE.values():
         r.close()
     _REGION_CACHE.clear()
+    _CHUNK_CACHE.clear()
     _CHUNK_CACHE.clear()
 
 

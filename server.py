@@ -1834,7 +1834,18 @@ def start_server(port: int = 0) -> Dict[str, Any]:
 @app.get("/api/worlds")
 def api_worlds():
     try:
-        return ok({"worlds": world.list_worlds()})
+        ws = world.list_worlds()
+        for w in ws:
+            try:
+                rp = os.path.join(w.get("dir", ""), "region")
+                n = len([f for f in os.listdir(rp) if f.endswith(".mca")]) \
+                    if os.path.isdir(rp) else 0
+            except Exception:
+                n = 0
+            w["regions"] = n
+        # 有已生成区块的排前面：默认选中第一个时不至于是一张画不出来的空图
+        ws.sort(key=lambda w: (-w.get("regions", 0), -(w.get("lastPlayed") or 0)))
+        return ok({"worlds": ws})
     except Exception as e:  # noqa: BLE001
         return err("读取存档失败：" + str(e))
 
@@ -1844,7 +1855,7 @@ def api_world_map():
     """实时地图：渲染已生成的区块。"""
     d = request.args.get("dir", "").strip()
     if not d or not os.path.isdir(d):
-        return err("存档目录不存在")
+        return err("存档目录不存在", 200)
     dim = request.args.get("dim", "overworld")
     try:
         cx = float(request.args.get("cx", 0))
@@ -1852,21 +1863,26 @@ def api_world_map():
         span = max(64, min(4096, int(request.args.get("span", 512))))
         tile = max(64, min(768, int(request.args.get("tile", 320))))
     except Exception:
-        return err("参数不正确")
+        return err("参数不正确", 200)
     if request.args.get("clear"):
         world.clear_cache()
     try:
         r = world.render_map(d, dim, (cx, cz), span, tile)
     except Exception as e:  # noqa: BLE001
-        return err("渲染失败：" + str(e))
-    return ok(r) if r.get("ok") else err(r.get("msg", "渲染失败"))
+        return err("渲染失败：" + str(e), 200)
+    # 渲染不出图属于可预期的业务结果，用 200 + ok:false，避免控制台刷 400
+    return ok(r) if r.get("ok") else err(r.get("msg", "渲染失败"), 200)
 
 
 @app.get("/api/world/structures")
 def api_world_structures():
     """结构位置：优先读存档真实数据，没有就按 seed 推测。"""
     d = request.args.get("dir", "").strip()
-    if not d or not os.path.isdir(d):
+    seed_arg = request.args.get("seed")
+    # 支持「只给 seed、不给存档」的纯推测模式（服务器 SeedMap 按钮走这条路）
+    if not d and not seed_arg:
+        return err("请提供存档目录或 seed")
+    if d and not os.path.isdir(d):
         return err("存档目录不存在")
     dim = request.args.get("dim", "overworld")
     try:
@@ -1879,19 +1895,20 @@ def api_world_structures():
     z0, z1 = cz - span / 2.0, cz + span / 2.0
 
     seed = None
-    try:
-        lvl = os.path.join(d, "level.dat")
-        if os.path.isfile(lvl):
-            seed = world._extract_seed(world.read_level_dat(lvl))
-    except Exception:
-        seed = None
-    if request.args.get("seed"):
+    if d:
         try:
-            seed = int(request.args["seed"])
+            lvl = os.path.join(d, "level.dat")
+            if os.path.isfile(lvl):
+                seed = world._extract_seed(world.read_level_dat(lvl))
+        except Exception:
+            seed = None
+    if seed_arg:
+        try:
+            seed = int(seed_arg)
         except Exception:
             pass
 
-    real = world.scan_structures(d, dim)
+    real = world.scan_structures(d, dim) if d else []
     guessed = []
     if seed is not None:
         have = set((s["id"], s["x"] // 16, s["z"] // 16) for s in real)

@@ -814,6 +814,16 @@ input[type=range]::-webkit-slider-thumb {
   border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:11.5px; }
 .mark-chip i { width:9px; height:9px; border-radius:50%; display:inline-block; }
 .map-layer { position:absolute; pointer-events:none; }
+/* 空状态：即使一个存档都没有，地图页也要有可见内容，而不是一片黑 */
+.map-empty { position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:9px; text-align:center;
+  background:rgba(9,18,29,.72); padding:20px; z-index:2; }
+.map-empty .me-icon { font-size:38px; line-height:1; opacity:.9; }
+.map-empty .me-title { color:#e8f4ff; font-size:15px; font-weight:600; }
+.map-empty .me-desc { color:#9fb6ca; font-size:12px; line-height:1.7; max-width:420px; }
+.map-empty .btn { background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.25);
+  color:#e8f4ff; margin-top:4px; }
+.map-empty .btn:hover { background:rgba(255,255,255,.2); }
 .skin-view { display:flex; align-items:center; gap:12px; margin-top:10px; }
 #skinCanvas { width:96px; height:96px; image-rendering:pixelated; border-radius:10px;
   border:1px solid var(--line); background:#eef6fb; }
@@ -1396,7 +1406,7 @@ body.booting .app { opacity: 0; }
       </section>
 
       <!-- ================= 地图 ================= -->
-      <section class="page" id="page-map" hidden>
+      <section class="page" id="page-map">
         <div class="map-toolbar">
           <select class="select" id="mapWorld" style="width:240px"></select>
           <select class="select" id="mapDim" style="width:110px">
@@ -1415,6 +1425,12 @@ body.booting .app { opacity: 0; }
           <canvas id="mapCanvas"></canvas>
           <div class="map-hint" id="mapHint">拖动查看 · 滚轮缩放 · 双击添加标点</div>
           <div class="map-coord" id="mapCoord">X 0 · Z 0</div>
+          <div class="map-empty" id="mapEmpty" hidden>
+            <div class="me-icon">🗺️</div>
+            <div class="me-title" id="mapEmptyTitle">还没有可显示的地图</div>
+            <div class="me-desc" id="mapEmptyDesc"></div>
+            <button class="btn ghost sm" id="btnMapEmptyRetry">重新扫描存档</button>
+          </div>
         </div>
         <div class="map-marks" id="mapMarks"></div>
         <div class="panel" style="margin-top:12px">
@@ -2551,7 +2567,12 @@ body.booting .app { opacity: 0; }
                         settings: "设置", guide: "使用指南", dev: "开发者" };
   function goto(page) {
     $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
-    $$(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + page));
+    $$(".page").forEach((p) => {
+      const on = p.id === "page-" + page;
+      p.classList.toggle("active", on);
+      // [hidden] 带 !important，会压过 .page.active；切页时主动摘掉，否则该页永远全白
+      if (on && p.hidden) p.hidden = false;
+    });
     $("#pageTitle").textContent = PAGE_TITLES[page] || "";
     state.page = page;
     // 自由布局：布局模式下换页就继续排这一页；平时自动套用已保存的排版
@@ -2562,7 +2583,11 @@ body.booting .app { opacity: 0; }
     if (page === "dev") { try { devSpaceWake(); } catch (e) {} }
     if (page === "versions") { loadInstalled(); loadOnline(false); }
     if (page === "resources") initResPage();
-    if (page === "map") initMapPage();
+    if (page === "map") {
+      initMapPage();
+      // 页面刚从隐藏变可见，canvas 要等布局完成后重算尺寸，否则是 0×0
+      try { requestAnimationFrame(() => requestAnimationFrame(() => drawMap())); } catch (e) {}
+    }
     if (page === "accounts") loadAccounts();
     if (page === "settings") loadSettings();
     if (page === "servers") initServersPage();
@@ -6044,23 +6069,57 @@ body.booting .app { opacity: 0; }
   // ---------------- 地图 ----------------
   const MAP_COLORS = { nether: "#2a1215", end: "#1a1a24", overworld: "#0d1520" };
 
+  /** 地图空状态：无存档 / 渲染失败时也要有可见界面，而不是一片纯黑 */
+  function setMapEmpty(title, desc) {
+    const box = $("#mapEmpty");
+    if (!box) return;
+    if (!title) { box.hidden = true; return; }
+    const t = $("#mapEmptyTitle"), d = $("#mapEmptyDesc");
+    if (t) t.textContent = title;
+    if (d) d.textContent = desc || "";
+    box.hidden = false;
+  }
+
   async function initMapPage() {
-    if (!state._mapInit) {
-      state._mapInit = true;
-      bindMapEvents();
+    try {
+      if (!state._mapInit) {
+        state._mapInit = true;
+        bindMapEvents();
+      }
+      const m = mapState();               // 先建好 state.map，否则下面的赋值会抛异常中断
+      const sel = $("#mapWorld");
+      const r = await api("/api/worlds");
+      const ws = (r.data && r.data.worlds) || [];
+      const cur = sel.value;
+      sel.innerHTML = ws.length
+        ? ws.map((w) => {
+            const tag = Number(w.regions || 0) > 0 ? `${w.regions} 个区域` : "无区块";
+            return `<option value="${esc(w.dir)}" data-seed="${esc(w.seed ?? "")}">` +
+              `${esc(w.name)}（${esc(w.version || "未知版本")}）· ${tag}</option>`;
+          }).join("")
+        : '<option value="">没有找到存档</option>';
+      if (cur && ws.some((w) => w.dir === cur)) sel.value = cur;
+      m.worlds = ws;
+      fillSkinTargets();
+      if (ws.length) {
+        await loadMap();
+      } else {
+        m.img = null; m.bounds = null; m.structs = []; m.slime = []; m.marks = [];
+        renderMarkChips();
+        $("#mapHint").textContent = "暂无存档";
+        setMapEmpty("还没有找到存档",
+          (r.ok ? "启动器会扫描 .minecraft/saves 及各版本目录下的存档。" : (r.msg || "读取存档列表失败")) +
+          " 先进入一次游戏生成世界，或在下方填写服务器 seed 绘制推测地图。");
+        drawMap();
+      }
+    } catch (e) {
+      console.warn("[地图] 初始化失败", e);
+      try {
+        $("#mapHint").textContent = "地图初始化失败";
+        setMapEmpty("地图初始化失败", String((e && e.message) || e));
+        drawMap();
+      } catch (_) {}
     }
-    const sel = $("#mapWorld");
-    const r = await api("/api/worlds");
-    const ws = (r.data && r.data.worlds) || [];
-    const cur = sel.value;
-    sel.innerHTML = ws.length
-      ? ws.map((w) => `<option value="${esc(w.dir)}" data-seed="${esc(w.seed ?? "")}">${esc(w.name)}（${esc(w.version || "未知版本")}）</option>`).join("")
-      : '<option value="">没有找到存档</option>';
-    if (cur && ws.some((w) => w.dir === cur)) sel.value = cur;
-    state.map.worlds = ws;
-    fillSkinTargets();
-    if (ws.length) await loadMap();
-    else $("#mapHint").textContent = "没有找到存档，先去「版本」页安装并进入一次游戏生成世界";
   }
 
   function mapState() {
@@ -6069,31 +6128,54 @@ body.booting .app { opacity: 0; }
     return state.map;
   }
 
-  async function loadMap() {
+  async function loadMap(clearCache) {
     const m = mapState();
     const sel = $("#mapWorld");
     const dim = $("#mapDim").value;
     m.dir = sel.value || "";
-    if (!m.dir) return;
+    if (!m.dir) {
+      m.img = null; m.bounds = null;
+      $("#mapHint").textContent = "暂无存档";
+      setMapEmpty("还没有找到存档",
+        "启动器会扫描 .minecraft/saves 及各版本目录下的存档。先进入一次游戏生成世界，或在下方填写服务器 seed 绘制推测地图。");
+      drawMap();
+      return;
+    }
     const opt = sel.options[sel.selectedIndex];
-    m.seed = opt && opt.dataset.seed !== "" && opt.dataset.seed !== "None"
-      ? Number(opt.dataset.seed) : null;
+    const rawSeed = opt && opt.dataset.seed;
+    m.seed = rawSeed && rawSeed !== "None" && rawSeed !== "null"
+      ? Number(rawSeed) : null;
     m.cx = m.cx || 0; m.cz = m.cz || 0;
     $("#mapHint").textContent = "加载中…";
+    setMapEmpty(null);
     const qs = "?dir=" + encodeURIComponent(m.dir) + "&dim=" + dim +
       "&cx=" + Math.round(m.cx) + "&cz=" + Math.round(m.cz) +
-      "&span=" + Math.round(m.span) + "&tile=480";
+      "&span=" + Math.round(m.span) + "&tile=480" + (clearCache === true ? "&clear=1" : "");
     const r = await api("/api/world/map" + qs);
     if (!r.ok) {
-      $("#mapHint").textContent = r.msg || "渲染失败";
-      m.img = null;
+      $("#mapHint").textContent = "渲染失败";
+      m.img = null; m.bounds = null;
+      setMapEmpty("这张地图暂时渲染不出来",
+        (r.msg || "渲染失败") + "。可以在上方切换到标注了「N 个区域」的存档，或换个维度；" +
+        "也可以在下方的「服务器地图」里用 seed 绘制推测结构图。");
       drawMap();
       return;
     }
     m.bounds = r.data.bounds;
     const img = new Image();
-    img.onload = () => { m.img = img; $("#mapHint").textContent =
-      "已生成区块实时地图（覆盖率 " + Math.round((r.data.coverage || 0) * 100) + "%）"; drawMap(); };
+    img.onload = () => {
+      m.img = img;
+      $("#mapHint").textContent =
+        "已生成区块实时地图（覆盖率 " + Math.round((r.data.coverage || 0) * 100) + "%）";
+      setMapEmpty(null);
+      drawMap();
+    };
+    img.onerror = () => {
+      m.img = null;
+      $("#mapHint").textContent = "图片解码失败";
+      setMapEmpty("地图图片加载失败", "后端已返回数据，但浏览器无法解码这张 PNG，试试点「刷新」重新渲染。");
+      drawMap();
+    };
     img.src = r.data.png;
     // 结构 + 史莱姆
     const qs2 = "?dir=" + encodeURIComponent(m.dir) + "&dim=" + dim +
@@ -6103,30 +6185,46 @@ body.booting .app { opacity: 0; }
       m.structs = r2.data.structures || [];
       m.slime = r2.data.slime || [];
       m.seed = r2.data.seed ?? m.seed;
+    } else {
+      m.structs = []; m.slime = [];
     }
     const mr = await api("/api/world/marks?dir=" + encodeURIComponent(m.dir));
     if (mr.ok) { m.marks = (mr.data.marks || []); state.mapRoutes = (mr.data.routes || []); }
+    else m.marks = [];
     renderMarkChips();
+    drawMap();
   }
 
-  /** 世界坐标 <-> 画布像素 */
+  /** 世界坐标 <-> 画布像素。
+   *  统一以「当前视野」(m.cx/cz/span) 为基准：这样拖动时图片、结构、标点
+   *  会一起平移；若改用图片 bounds 当基准，拖动只会改数字而画面纹丝不动。 */
+  function viewBounds(m) {
+    const cv = $("#mapCanvas");
+    const span = m.span || 512;
+    const aspect = (cv.height || 1) / (cv.width || 1);
+    return { x0: m.cx - span / 2, z0: m.cz - span * aspect / 2, span: span };
+  }
   function w2p(m, wx, wz) {
     const cv = $("#mapCanvas");
-    const b = m.bounds || { x0: m.cx - m.span / 2, z0: m.cz - m.span / 2, span: m.span };
-    const k = cv.width / b.span;
+    const b = viewBounds(m);
+    const k = (cv.width || 1) / b.span;
     return [(wx - b.x0) * k, (wz - b.z0) * k, k];
   }
   function p2w(m, px, py) {
     const cv = $("#mapCanvas");
-    const b = m.bounds || { x0: m.cx - m.span / 2, z0: m.cz - m.span / 2, span: m.span };
-    const k = b.span / cv.width;
+    const b = viewBounds(m);
+    const k = b.span / (cv.width || 1);
     return [b.x0 + px * k, b.z0 + py * k];
   }
 
   function drawMap() {
     const m = mapState();
     const cv = $("#mapCanvas");
-    const rect = $("#mapStage").getBoundingClientRect();
+    const stage = $("#mapStage");
+    if (!cv || !stage || !cv.getContext) return;
+    const rect = stage.getBoundingClientRect();
+    // 页面还没真正显示时别把 canvas 压成 0×0，否则之后一直是空白
+    if (rect.width < 2 || rect.height < 2) return;
     if (cv.width !== Math.round(rect.width) || cv.height !== Math.round(rect.height)) {
       cv.width = Math.round(rect.width);
       cv.height = Math.round(rect.height);
@@ -6134,11 +6232,33 @@ body.booting .app { opacity: 0; }
     const ctx = cv.getContext("2d");
     ctx.fillStyle = MAP_COLORS[$("#mapDim").value] || "#0d1520";
     ctx.fillRect(0, 0, cv.width, cv.height);
+    // 网格底纹：没有地图图片时也能看出这是一块可交互的坐标平面
+    const b = viewBounds(m);
+    const k = cv.width / b.span;
+    let step = 16;
+    while (step * k < 36) step *= 2;
+    ctx.strokeStyle = "rgba(120,180,220,.10)"; ctx.lineWidth = 1;
+    for (let gx = Math.ceil(b.x0 / step) * step; gx <= b.x0 + b.span; gx += step) {
+      const px = (gx - b.x0) * k;
+      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, cv.height); ctx.stroke();
+    }
+    for (let gz = Math.ceil(b.z0 / step) * step; gz <= b.z0 + b.span; gz += step) {
+      const py = (gz - b.z0) * k;
+      ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(cv.width, py); ctx.stroke();
+    }
+    const [ox, oy] = w2p(m, 0, 0);
+    if (ox >= 0 && ox <= cv.width && oy >= 0 && oy <= cv.height) {
+      ctx.strokeStyle = "rgba(255,255,255,.35)";
+      ctx.beginPath();
+      ctx.moveTo(ox - 8, oy); ctx.lineTo(ox + 8, oy);
+      ctx.moveTo(ox, oy - 8); ctx.lineTo(ox, oy + 8);
+      ctx.stroke();
+    }
     if (m.img && m.bounds) {
-      const [px, py] = w2p(m, m.bounds.x0, m.bounds.z0);
-      const k = cv.width / m.bounds.span;
-      ctx.imageSmoothingEnabled = k < 1;
-      ctx.drawImage(m.img, px, py, m.bounds.span * k, m.bounds.span * k);
+      const [px, py, kk] = w2p(m, m.bounds.x0, m.bounds.z0);
+      const bs = m.bounds.span || 512;
+      ctx.imageSmoothingEnabled = kk < 1;
+      ctx.drawImage(m.img, px, py, bs * kk, bs * kk);
     }
     // 史莱姆区块
     if ($("#mapLayerSlime").checked && m.slime.length) {
@@ -6211,23 +6331,33 @@ body.booting .app { opacity: 0; }
     const stage = $("#mapStage");
     let drag = null;
     stage.addEventListener("mousedown", (e) => {
+      if (e.target.closest && e.target.closest(".map-empty")) return;
       const m = mapState();
       drag = { x: e.clientX, y: e.clientY, cx: m.cx, cz: m.cz };
       stage.classList.add("dragging");
     });
-    window.addEventListener("mouseup", () => { drag = null; stage.classList.remove("dragging"); });
+    window.addEventListener("mouseup", () => {
+      if (drag) {
+        drag = null;
+        // 松手后按新中心重新出图，拖出已渲染范围也不会是空白
+        const m = mapState();
+        if (m.dir) { try { loadMap(); } catch (e) {} }
+      }
+      stage.classList.remove("dragging");
+    });
     window.addEventListener("mousemove", (e) => {
       const m = mapState();
-      if (drag && m.bounds) {
+      const rect = stage.getBoundingClientRect();
+      if (drag) {
         const cv = $("#mapCanvas");
-        const k = m.bounds.span / cv.width;
+        const k = m.span / (cv.width || 1);
         m.cx = drag.cx - (e.clientX - drag.x) * k;
         m.cz = drag.cz - (e.clientY - drag.y) * k;
         drawMap();
-        const [wx, wz] = p2w(m, e.offsetX || 0, e.offsetY || 0);
-        $("#mapCoord").textContent = "X " + Math.round(wx) + " · Z " + Math.round(wz);
-      } else if (m.bounds) {
-        const rect = stage.getBoundingClientRect();
+      }
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right &&
+                     e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (inside || drag) {
         const [wx, wz] = p2w(m, e.clientX - rect.left, e.clientY - rect.top);
         $("#mapCoord").textContent = "X " + Math.round(wx) + " · Z " + Math.round(wz);
       }
@@ -6240,7 +6370,7 @@ body.booting .app { opacity: 0; }
     }, { passive: false });
     stage.addEventListener("dblclick", async (e) => {
       const m = mapState();
-      if (!m.bounds) return;
+      if (!m.dir) { toast("请先选择一个存档再添加标点", "err"); return; }
       const rect = stage.getBoundingClientRect();
       const [wx, wz] = p2w(m, e.clientX - rect.left, e.clientY - rect.top);
       const name = await uiPrompt({ title: t("添加标点"), value: "标点 " + (m.marks.length + 1),
@@ -6256,10 +6386,13 @@ body.booting .app { opacity: 0; }
     ["#mapLayerStruct", "#mapLayerSlime", "#mapLayerMarks"].forEach((id) =>
       $(id).addEventListener("change", drawMap));
     $("#mapWorld").addEventListener("change", () => { const m = mapState(); m.cx = 0; m.cz = 0; loadMap(); });
-    $("#mapDim").addEventListener("change", loadMap);
-    $("#btnMapReload").addEventListener("click", () => loadMap());
+    $("#mapDim").addEventListener("change", () => loadMap());
+    $("#btnMapReload").addEventListener("click", () => loadMap(true));
+    const retry = $("#btnMapEmptyRetry");
+    if (retry) retry.addEventListener("click", () => initMapPage());
     $("#btnMapMark").addEventListener("click", async () => {
       const m = mapState();
+      if (!m.dir) { toast("请先选择一个存档再添加标点", "err"); return; }
       const name = await uiPrompt({ title: t("添加标点"), value: "标点 " + (m.marks.length + 1),
         placeholder: "给这个点起个名字" });
       if (name === null) return;
@@ -6283,14 +6416,19 @@ body.booting .app { opacity: 0; }
       if (!/^-?\d+$/.test(seedRaw)) { toast("请填写数字 seed", "err"); return; }
       const m = mapState();
       const dim = $("#mapDim").value;
+      const drawSpan = Math.round(Math.max(m.span, 2048));
+      m.span = drawSpan;                 // 视野与推测范围一致，结构点才不会画到屏幕外
       const qs = "?seed=" + encodeURIComponent(seedRaw) + "&cx=" + Math.round(m.cx) +
-        "&cz=" + Math.round(m.cz) + "&span=" + Math.round(Math.max(m.span, 2048)) + "&dim=" + dim;
+        "&cz=" + Math.round(m.cz) + "&span=" + drawSpan + "&dim=" + dim;
       const r = await api("/api/world/structures" + qs);
       if (!r.ok) { toast(r.msg, "err"); return; }
       m.structs = r.data.structures || [];
       m.slime = r.data.slime || [];
+      m.seed = Number(seedRaw);
       $("#mapLayerStruct").checked = true;
       $("#mapLayerSlime").checked = true;
+      setMapEmpty(null);                 // 即使没有存档，推测图也要露出来
+      $("#mapHint").textContent = "SeedMap · seed " + seedRaw;
       drawMap();
       toast("已按 seed 绘制 " + m.structs.length + " 个推测结构、" + m.slime.length + " 个史莱姆区块", "ok");
     });
