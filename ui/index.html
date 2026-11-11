@@ -824,6 +824,22 @@ input[type=range]::-webkit-slider-thumb {
 .map-empty .btn { background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.25);
   color:#e8f4ff; margin-top:4px; }
 .map-empty .btn:hover { background:rgba(255,255,255,.2); }
+/* 模式切换 / 图例 / 悬停提示 */
+.seg { display:inline-flex; background:var(--line); border-radius:10px; padding:3px; gap:2px; }
+.seg-btn { border:0; background:transparent; color:var(--muted); font-size:12px;
+  padding:6px 12px; border-radius:8px; cursor:pointer; white-space:nowrap; }
+.seg-btn.active { background:#fff; color:var(--text); font-weight:600;
+  box-shadow:0 1px 4px rgba(0,0,0,.10); }
+.map-learn { font-size:11.5px; color:var(--muted); white-space:nowrap; }
+.map-legend { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:9px;
+  font-size:11.5px; color:var(--muted); align-items:center; }
+.lg-item { display:inline-flex; align-items:center; gap:5px; }
+.lg-item i { width:12px; height:12px; border-radius:3px; display:inline-block;
+  border:1px solid rgba(0,0,0,.15); }
+.map-tip { position:absolute; z-index:5; pointer-events:none; max-width:220px;
+  background:rgba(10,17,26,.94); color:#eaf4ff; border:1px solid rgba(255,255,255,.18);
+  border-radius:8px; padding:6px 9px; font-size:11.5px; line-height:1.6;
+  box-shadow:0 4px 14px rgba(0,0,0,.35); }
 .skin-view { display:flex; align-items:center; gap:12px; margin-top:10px; }
 #skinCanvas { width:96px; height:96px; image-rendering:pixelated; border-radius:10px;
   border:1px solid var(--line); background:#eef6fb; }
@@ -1408,23 +1424,43 @@ body.booting .app { opacity: 0; }
       <!-- ================= 地图 ================= -->
       <section class="page" id="page-map">
         <div class="map-toolbar">
-          <select class="select" id="mapWorld" style="width:240px"></select>
+          <div class="seg" id="mapModeSeg">
+            <button class="seg-btn active" data-mode="world">🗺️ 实时存档地图</button>
+            <button class="seg-btn" data-mode="seed">🌱 SeedMap（选种子）</button>
+          </div>
           <select class="select" id="mapDim" style="width:110px">
             <option value="overworld">主世界</option>
             <option value="nether">下界</option>
             <option value="end">末地</option>
           </select>
-          <button class="btn ghost sm" id="btnMapReload">刷新</button>
           <span class="grow"></span>
           <label class="switch"><input type="checkbox" id="mapLayerStruct" checked><span>结构</span></label>
           <label class="switch"><input type="checkbox" id="mapLayerSlime"><span>史莱姆区块</span></label>
           <label class="switch"><input type="checkbox" id="mapLayerMarks" checked><span>标点</span></label>
+          <label class="switch"><input type="checkbox" id="mapLayerNames"><span>名称</span></label>
           <button class="btn ghost sm" id="btnMapMark">添加标点</button>
         </div>
+
+        <!-- 实时存档地图：选存档；区块会被记住 -->
+        <div class="map-toolbar" id="mapWorldRow">
+          <select class="select" id="mapWorld" style="width:280px"></select>
+          <button class="btn ghost sm" id="btnMapReload">刷新</button>
+          <button class="btn ghost sm" id="btnMapFit">全图</button>
+          <span class="map-learn" id="mapLearn">已记住 0 个区块</span>
+        </div>
+
+        <!-- SeedMap：选种子，不读存档 -->
+        <div class="map-toolbar" id="mapSeedRow" hidden>
+          <input class="input" id="mapSeed" style="width:230px" placeholder="世界种子：数字或任意文字">
+          <button class="btn primary sm" id="btnSeedDraw">绘制 SeedMap</button>
+          <span class="hint" style="margin:0">种子 + 维度决定地形与结构位置；这是推测图，不读取存档。支持文字种子。</span>
+        </div>
+
         <div class="map-stage" id="mapStage">
           <canvas id="mapCanvas"></canvas>
           <div class="map-hint" id="mapHint">拖动查看 · 滚轮缩放 · 双击添加标点</div>
           <div class="map-coord" id="mapCoord">X 0 · Z 0</div>
+          <div class="map-tip" id="mapTip" hidden></div>
           <div class="map-empty" id="mapEmpty" hidden>
             <div class="me-icon">🗺️</div>
             <div class="me-title" id="mapEmptyTitle">还没有可显示的地图</div>
@@ -1432,20 +1468,17 @@ body.booting .app { opacity: 0; }
             <button class="btn ghost sm" id="btnMapEmptyRetry">重新扫描存档</button>
           </div>
         </div>
+        <div class="map-legend" id="mapLegend" hidden></div>
         <div class="map-marks" id="mapMarks"></div>
         <div class="panel" style="margin-top:12px">
-          <div class="panel-head"><span>服务器地图</span></div>
+          <div class="panel-head"><span>服务器状态探测</span></div>
           <div class="form-row">
             <input class="input grow" id="srvAddr" placeholder="服务器地址，如 mc.example.com">
             <button class="btn primary sm" id="btnSrvPing">探测</button>
           </div>
           <div class="hint" id="srvInfo">探测会显示版本与在线人数。</div>
-          <div class="form-row">
-            <input class="input grow" id="srvSeed" placeholder="服务器 seed（用于绘制结构地图与史莱姆区块）">
-            <button class="btn ghost sm" id="btnSrvSeedmap">绘制 SeedMap</button>
-          </div>
-          <div class="hint">说明：读取服务器实时区块需要真正登录并接收区块包，启动器不会代替你登录他人服务器。
-            这里提供状态探测；拿到 seed 后可绘制结构推测图与史莱姆区块（与真实世界生成一致）。</div>
+          <div class="hint">读取服务器实时区块需要真正登录并接收区块包，启动器不会代替你登录他人服务器。
+            想按种子看地图，请切到上方「SeedMap（选种子）」模式并填入服务器种子。</div>
         </div>
       </section>
 
@@ -6086,7 +6119,15 @@ body.booting .app { opacity: 0; }
         state._mapInit = true;
         bindMapEvents();
       }
-      const m = mapState();               // 先建好 state.map，否则下面的赋值会抛异常中断
+      // 恢复上次模式与种子：两种模式各自记住自己的选择
+      let savedMode = "world";
+      try { savedMode = localStorage.getItem("kcl.mapMode") || "world"; } catch (e) {}
+      try { $("#mapSeed").value = localStorage.getItem("kcl.mapSeed") || ""; } catch (e) {}
+      state.map = state.map || {};
+      state.map.mode = savedMode === "seed" ? "seed" : "world";
+      applyMapModeUI();
+
+      const wm = mapStateOf("world");
       const sel = $("#mapWorld");
       const r = await api("/api/worlds");
       const ws = (r.data && r.data.worlds) || [];
@@ -6099,19 +6140,9 @@ body.booting .app { opacity: 0; }
           }).join("")
         : '<option value="">没有找到存档</option>';
       if (cur && ws.some((w) => w.dir === cur)) sel.value = cur;
-      m.worlds = ws;
+      wm.worlds = ws;
       fillSkinTargets();
-      if (ws.length) {
-        await loadMap();
-      } else {
-        m.img = null; m.bounds = null; m.structs = []; m.slime = []; m.marks = [];
-        renderMarkChips();
-        $("#mapHint").textContent = "暂无存档";
-        setMapEmpty("还没有找到存档",
-          (r.ok ? "启动器会扫描 .minecraft/saves 及各版本目录下的存档。" : (r.msg || "读取存档列表失败")) +
-          " 先进入一次游戏生成世界，或在下方填写服务器 seed 绘制推测地图。");
-        drawMap();
-      }
+      await loadMap();
     } catch (e) {
       console.warn("[地图] 初始化失败", e);
       try {
@@ -6122,13 +6153,71 @@ body.booting .app { opacity: 0; }
     }
   }
 
+  function freshMap() {
+    return { dir: "", cx: 0, cz: 0, span: 512, img: null, bounds: null,
+             structs: [], slime: [], marks: [], seed: null, legend: [],
+             learned: 0, total: 0, worlds: [] };
+  }
+  function mapStateOf(mode) {
+    if (!state.map) state.map = { mode: "world" };
+    if (!state.map[mode]) {
+      state.map[mode] = freshMap();
+      // SeedMap 默认看大范围，才能看出不同群系，而不是一片平坦
+      if (mode === "seed") state.map[mode].span = 2048;
+    }
+    return state.map[mode];
+  }
+  /** 当前模式的地图状态（实时存档 / SeedMap 各一份，互不覆盖） */
   function mapState() {
-    if (!state.map) state.map = { dir: "", cx: 0, cz: 0, span: 512,
-      img: null, bounds: null, structs: [], slime: [], marks: [], seed: null, drag: false };
-    return state.map;
+    if (!state.map) state.map = { mode: "world" };
+    return mapStateOf(mapMode());
+  }
+  function mapMode() {
+    return (state.map && state.map.mode) === "seed" ? "seed" : "world";
+  }
+  function applyMapModeUI() {
+    const mode = mapMode();
+    $$("#mapModeSeg .seg-btn").forEach((b) =>
+      b.classList.toggle("active", b.dataset.mode === mode));
+    $("#mapWorldRow").hidden = mode !== "world";
+    $("#mapSeedRow").hidden = mode !== "seed";
+    $("#mapLegend").hidden = mode !== "seed";
+    $("#mapMarks").hidden = mode === "seed";
+  }
+  function setMapMode(mode) {
+    state.map = state.map || {};
+    state.map.mode = mode === "seed" ? "seed" : "world";
+    try { localStorage.setItem("kcl.mapMode", state.map.mode); } catch (e) {}
+    applyMapModeUI();
+    setMapEmpty(null);
+    $("#mapTip").hidden = true;
+    loadMap();
+  }
+  function renderLegend() {
+    const m = mapState();
+    const box = $("#mapLegend");
+    if (mapMode() !== "seed" || !m.legend.length) {
+      box.hidden = true; box.innerHTML = ""; return;
+    }
+    box.hidden = false;
+    box.innerHTML = '<b style="color:var(--text)">群系（按种子推测）</b>' +
+      m.legend.map((x) => `<span class="lg-item"><i style="background:${esc(x.color)}"></i>` +
+        `${esc(x.name)} ${Math.round((x.ratio || 0) * 100)}%</span>`).join("");
+  }
+  function updateLearnLabel() {
+    if (mapMode() !== "world") return;
+    const m = mapStateOf("world");
+    $("#mapLearn").textContent = m.total
+      ? (m.learnDone ? `已记住全部 ${m.total} 个区块 · 新区块会自动补上`
+                     : `已记住 ${m.learned} / ${m.total} 个区块（随游戏推进自动累积）`)
+      : `已记住 ${m.learned} 个区块`;
   }
 
   async function loadMap(clearCache) {
+    return mapMode() === "seed" ? loadSeedMap() : loadWorldMap(clearCache);
+  }
+
+  async function loadWorldMap(clearCache) {
     const m = mapState();
     const sel = $("#mapWorld");
     const dim = $("#mapDim").value;
@@ -6137,7 +6226,7 @@ body.booting .app { opacity: 0; }
       m.img = null; m.bounds = null;
       $("#mapHint").textContent = "暂无存档";
       setMapEmpty("还没有找到存档",
-        "启动器会扫描 .minecraft/saves 及各版本目录下的存档。先进入一次游戏生成世界，或在下方填写服务器 seed 绘制推测地图。");
+        "启动器会扫描 .minecraft/saves 及各版本目录下的存档。先进入一次游戏生成世界，或切到「SeedMap（选种子）」模式看推测地图。");
       drawMap();
       return;
     }
@@ -6157,20 +6246,29 @@ body.booting .app { opacity: 0; }
       m.img = null; m.bounds = null;
       setMapEmpty("这张地图暂时渲染不出来",
         (r.msg || "渲染失败") + "。可以在上方切换到标注了「N 个区域」的存档，或换个维度；" +
-        "也可以在下方的「服务器地图」里用 seed 绘制推测结构图。");
+        "也可以切到「SeedMap（选种子）」模式看推测地形。");
       drawMap();
       return;
     }
     m.bounds = r.data.bounds;
+    m.legend = [];
+    m.learned = Number(r.data.learned || 0);
+    m.total = Number(r.data.total || 0);
+    m.learnDone = m.total > 0 && m.learned >= m.total;
+    updateLearnLabel();
     const img = new Image();
     img.onload = () => {
+      // 切换模式/存档后，旧请求的结果要丢弃，否则会把新模式的空状态盖掉
+      if (mapMode() !== "world" || m.dir !== $("#mapWorld").value) return;
       m.img = img;
-      $("#mapHint").textContent =
-        "已生成区块实时地图（覆盖率 " + Math.round((r.data.coverage || 0) * 100) + "%）";
+      $("#mapHint").textContent = "实时存档地图 · 覆盖率 " +
+        Math.round((r.data.coverage || 0) * 100) + "% · " +
+        $("#mapDim").selectedOptions[0].textContent;
       setMapEmpty(null);
       drawMap();
     };
     img.onerror = () => {
+      if (mapMode() !== "world" || m.dir !== $("#mapWorld").value) return;
       m.img = null;
       $("#mapHint").textContent = "图片解码失败";
       setMapEmpty("地图图片加载失败", "后端已返回数据，但浏览器无法解码这张 PNG，试试点「刷新」重新渲染。");
@@ -6192,6 +6290,65 @@ body.booting .app { opacity: 0; }
     if (mr.ok) { m.marks = (mr.data.marks || []); state.mapRoutes = (mr.data.routes || []); }
     else m.marks = [];
     renderMarkChips();
+    drawMap();
+  }
+
+  /** SeedMap：用户选种子 + 选维度，画推测地形与结构，不读存档 */
+  async function loadSeedMap() {
+    const m = mapState();
+    const raw = ($("#mapSeed").value || "").trim();
+    try { localStorage.setItem("kcl.mapSeed", raw); } catch (e) {}
+    if (!raw) {
+      m.img = null; m.bounds = null; m.structs = []; m.slime = []; m.legend = [];
+      renderLegend();
+      $("#mapHint").textContent = "等待种子";
+      setMapEmpty("先选一个种子",
+        "在上方输入数字或文字种子，点「绘制 SeedMap」。种子与维度一起决定地形群系和结构位置；" +
+        "这是按种子推算的地图，不读取任何存档。");
+      drawMap();
+      return;
+    }
+    const dim = $("#mapDim").value;
+    const dimName = $("#mapDim").selectedOptions[0].textContent;
+    $("#mapHint").textContent = "按种子绘制中…";
+    setMapEmpty(null);
+    const base = "dim=" + dim + "&cx=" + Math.round(m.cx) + "&cz=" + Math.round(m.cz);
+    const r = await api("/api/world/seedmap?seed=" + encodeURIComponent(raw) + "&" +
+      base + "&span=" + Math.round(m.span) + "&tile=320");
+    if (!r.ok) {
+      m.img = null; m.bounds = null;
+      $("#mapHint").textContent = "绘制失败";
+      setMapEmpty("SeedMap 绘制失败", r.msg || "绘制失败");
+      drawMap();
+      return;
+    }
+    m.bounds = r.data.bounds;
+    m.legend = r.data.legend || [];
+    m.seedText = raw;
+    renderLegend();
+    const img = new Image();
+    img.onload = () => {
+      if (mapMode() !== "seed" || ($("#mapSeed").value || "").trim() !== raw) return;
+      m.img = img;
+      $("#mapHint").textContent = "SeedMap · " + raw + " · " + dimName;
+      setMapEmpty(null);
+      drawMap();
+    };
+    img.onerror = () => {
+      if (mapMode() !== "seed") return;
+      m.img = null;
+      setMapEmpty("地图图片加载失败", "浏览器无法解码这张 PNG，再点一次「绘制 SeedMap」试试。");
+      drawMap();
+    };
+    img.src = r.data.png;
+    // 结构推测：后端按维度过滤，主世界不会再冒出末地城
+    const r2 = await api("/api/world/structures?seed=" + encodeURIComponent(raw) + "&" +
+      base + "&span=" + Math.round(m.span * 2));
+    if (r2.ok) {
+      m.structs = r2.data.structures || [];
+      m.slime = r2.data.slime || [];
+      m.seed = r2.data.seed;
+    } else { m.structs = []; m.slime = []; }
     drawMap();
   }
 
@@ -6272,22 +6429,32 @@ body.booting .app { opacity: 0; }
         ctx.strokeRect(px, py, size, size);
       }
     }
-    // 结构
+    // 结构：默认只画小徽章，不再糊一屏文字；悬停看名称，勾「名称」可显示全部
+    m._hits = [];
     if ($("#mapLayerStruct").checked) {
+      const showNames = $("#mapLayerNames").checked;
       for (const st of m.structs) {
         const [px, py] = w2p(m, st.x, st.z);
-        if (px < -8 || py < -8 || px > cv.width + 8 || py > cv.height + 8) continue;
+        if (px < -14 || py < -14 || px > cv.width + 14 || py > cv.height + 14) continue;
+        m._hits.push({ x: px, y: py, st: st });
+        const col = st.color || "#ffd54a";
         ctx.beginPath();
-        ctx.arc(px, py, 5, 0, 7);
-        ctx.fillStyle = st.color || "#ffd54a";
-        ctx.fill();
-        ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.stroke();
-        ctx.font = "11px system-ui";
-        ctx.fillStyle = "#fff";
-        ctx.strokeStyle = "rgba(0,0,0,.7)";
-        ctx.lineWidth = 3;
-        ctx.strokeText(st.label, px + 7, py + 4);
-        ctx.fillText(st.label, px + 7, py + 4);
+        if (ctx.roundRect) ctx.roundRect(px - 7, py - 7, 14, 14, 4);
+        else ctx.rect(px - 7, py - 7, 14, 14);
+        ctx.fillStyle = "rgba(8,14,22,.86)"; ctx.fill();
+        ctx.lineWidth = 1.6; ctx.strokeStyle = col; ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 2.6, 0, 7);
+        ctx.fillStyle = col; ctx.fill();
+        if (st.real) {   // 存档里真实存在的结构加白点角标，区别于推测
+          ctx.beginPath(); ctx.arc(px + 6, py - 6, 2, 0, 7);
+          ctx.fillStyle = "#fff"; ctx.fill();
+        }
+        if (showNames) {
+          ctx.font = "11px system-ui"; ctx.fillStyle = "#fff";
+          ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.lineWidth = 3;
+          ctx.strokeText(st.label, px + 10, py + 4);
+          ctx.fillText(st.label, px + 10, py + 4);
+        }
       }
     }
     // 标点
@@ -6330,6 +6497,25 @@ body.booting .app { opacity: 0; }
   function bindMapEvents() {
     const stage = $("#mapStage");
     let drag = null;
+
+    /** 悬停提示：默认不显示结构名称，鼠标移到徽章上才告诉你是啥 */
+    function showMapTip(m, px, py) {
+      const tip = $("#mapTip");
+      let hit = null, bd = 16 * 16;
+      for (const h of (m._hits || [])) {
+        const d = (h.x - px) ** 2 + (h.y - py) ** 2;
+        if (d < bd) { bd = d; hit = h; }
+      }
+      if (!hit) { tip.hidden = true; return; }
+      const s = hit.st;
+      tip.innerHTML = `<b>${esc(s.label)}</b><br>X ${Math.round(s.x)} · Z ${Math.round(s.z)}` +
+        `<br><span style="opacity:.72">${s.real ? "存档中真实存在" : "按种子推测"}</span>`;
+      tip.hidden = false;
+      const w = tip.offsetWidth || 160, h = tip.offsetHeight || 48;
+      tip.style.left = Math.max(4, Math.min(px + 14, stage.clientWidth - w - 6)) + "px";
+      tip.style.top = Math.max(4, Math.min(py + 14, stage.clientHeight - h - 6)) + "px";
+    }
+
     stage.addEventListener("mousedown", (e) => {
       if (e.target.closest && e.target.closest(".map-empty")) return;
       const m = mapState();
@@ -6340,8 +6526,7 @@ body.booting .app { opacity: 0; }
       if (drag) {
         drag = null;
         // 松手后按新中心重新出图，拖出已渲染范围也不会是空白
-        const m = mapState();
-        if (m.dir) { try { loadMap(); } catch (e) {} }
+        try { loadMap(); } catch (e) {}
       }
       stage.classList.remove("dragging");
     });
@@ -6355,22 +6540,27 @@ body.booting .app { opacity: 0; }
         m.cz = drag.cz - (e.clientY - drag.y) * k;
         drawMap();
       }
-      const inside = e.clientX >= rect.left && e.clientX <= rect.right &&
-                     e.clientY >= rect.top && e.clientY <= rect.bottom;
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      const inside = px >= 0 && px <= rect.width && py >= 0 && py <= rect.height;
       if (inside || drag) {
-        const [wx, wz] = p2w(m, e.clientX - rect.left, e.clientY - rect.top);
+        const [wx, wz] = p2w(m, px, py);
         $("#mapCoord").textContent = "X " + Math.round(wx) + " · Z " + Math.round(wz);
       }
+      if (inside) showMapTip(m, px, py);
+      else $("#mapTip").hidden = true;
     });
+    stage.addEventListener("mouseleave", () => { $("#mapTip").hidden = true; });
     stage.addEventListener("wheel", (e) => {
       e.preventDefault();
       const m = mapState();
-      m.span = Math.max(128, Math.min(4096, m.span * (e.deltaY > 0 ? 1.25 : 0.8)));
+      m.span = Math.max(128, Math.min(8192, m.span * (e.deltaY > 0 ? 1.25 : 0.8)));
       loadMap();
     }, { passive: false });
     stage.addEventListener("dblclick", async (e) => {
       const m = mapState();
-      if (!m.dir) { toast("请先选择一个存档再添加标点", "err"); return; }
+      if (mapMode() === "seed" || !m.dir) {
+        toast("标点保存在存档上，请切到「实时存档地图」并选好存档", "err"); return;
+      }
       const rect = stage.getBoundingClientRect();
       const [wx, wz] = p2w(m, e.clientX - rect.left, e.clientY - rect.top);
       const name = await uiPrompt({ title: t("添加标点"), value: "标点 " + (m.marks.length + 1),
@@ -6383,16 +6573,30 @@ body.booting .app { opacity: 0; }
       await post("/api/world/marks", { dir: m.dir, marks: m.marks });
       toast("已添加标点 " + Math.round(wx) + ", " + Math.round(wz), "ok");
     });
-    ["#mapLayerStruct", "#mapLayerSlime", "#mapLayerMarks"].forEach((id) =>
+
+    // 图层
+    ["#mapLayerStruct", "#mapLayerSlime", "#mapLayerMarks", "#mapLayerNames"].forEach((id) =>
       $(id).addEventListener("change", drawMap));
-    $("#mapWorld").addEventListener("change", () => { const m = mapState(); m.cx = 0; m.cz = 0; loadMap(); });
+
+    // 模式：实时存档地图 <-> SeedMap
+    $$("#mapModeSeg .seg-btn").forEach((b) =>
+      b.addEventListener("click", () => setMapMode(b.dataset.mode)));
+
+    // 实时存档地图：选存档 / 刷新 / 全图 / 换维度
+    $("#mapWorld").addEventListener("change", () => { const m = mapState(); m.cx = 0; m.cz = 0; m.span = 512; loadMap(); });
     $("#mapDim").addEventListener("change", () => loadMap());
     $("#btnMapReload").addEventListener("click", () => loadMap(true));
+    $("#btnMapFit").addEventListener("click", () => {
+      const m = mapState(); m.span = 4096; m.cx = 0; m.cz = 0; loadMap();
+    });
     const retry = $("#btnMapEmptyRetry");
-    if (retry) retry.addEventListener("click", () => initMapPage());
+    if (retry) retry.addEventListener("click", () =>
+      mapMode() === "seed" ? loadSeedMap() : initMapPage());
     $("#btnMapMark").addEventListener("click", async () => {
       const m = mapState();
-      if (!m.dir) { toast("请先选择一个存档再添加标点", "err"); return; }
+      if (mapMode() === "seed" || !m.dir) {
+        toast("标点保存在存档上，请切到「实时存档地图」并选好存档", "err"); return;
+      }
       const name = await uiPrompt({ title: t("添加标点"), value: "标点 " + (m.marks.length + 1),
         placeholder: "给这个点起个名字" });
       if (name === null) return;
@@ -6402,6 +6606,15 @@ body.booting .app { opacity: 0; }
       renderMarkChips(); drawMap();
       await post("/api/world/marks", { dir: m.dir, marks: m.marks });
     });
+
+    // SeedMap：选种子（数字或文字）+ 选维度
+    const drawSeed = () => { const m = mapState(); m.cx = 0; m.cz = 0; loadSeedMap(); };
+    $("#btnSeedDraw").addEventListener("click", drawSeed);
+    $("#mapSeed").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); drawSeed(); }
+    });
+
+    // 服务器状态探测
     $("#btnSrvPing").addEventListener("click", async () => {
       const addr = ($("#srvAddr").value || "").trim();
       if (!addr) { toast("请填写服务器地址", "err"); return; }
@@ -6411,27 +6624,30 @@ body.booting .app { opacity: 0; }
       $("#srvInfo").innerHTML = `<b style="color:#2c8f56">✓ 在线</b> 版本 ${esc(r.data.version)}` +
         ` · 玩家 ${r.data.players}/${r.data.max}` + (r.data.motd ? " · " + esc(r.data.motd) : "");
     });
-    $("#btnSrvSeedmap").addEventListener("click", async () => {
-      const seedRaw = ($("#srvSeed").value || "").trim();
-      if (!/^-?\d+$/.test(seedRaw)) { toast("请填写数字 seed", "err"); return; }
-      const m = mapState();
-      const dim = $("#mapDim").value;
-      const drawSpan = Math.round(Math.max(m.span, 2048));
-      m.span = drawSpan;                 // 视野与推测范围一致，结构点才不会画到屏幕外
-      const qs = "?seed=" + encodeURIComponent(seedRaw) + "&cx=" + Math.round(m.cx) +
-        "&cz=" + Math.round(m.cz) + "&span=" + drawSpan + "&dim=" + dim;
-      const r = await api("/api/world/structures" + qs);
-      if (!r.ok) { toast(r.msg, "err"); return; }
-      m.structs = r.data.structures || [];
-      m.slime = r.data.slime || [];
-      m.seed = Number(seedRaw);
-      $("#mapLayerStruct").checked = true;
-      $("#mapLayerSlime").checked = true;
-      setMapEmpty(null);                 // 即使没有存档，推测图也要露出来
-      $("#mapHint").textContent = "SeedMap · seed " + seedRaw;
-      drawMap();
-      toast("已按 seed 绘制 " + m.structs.length + " 个推测结构、" + m.slime.length + " 个史莱姆区块", "ok");
-    });
+
+    // 边玩边记：定时把存档里新生成的区块纳入地图缓存
+    let _learnBusy = false, _learnTicks = 0;
+    setInterval(async () => {
+      if (state.page !== "map" || mapMode() !== "world" || _learnBusy) return;
+      const wm = mapStateOf("world");
+      if (!wm.dir) return;
+      _learnTicks++;
+      // 已经全部记住后降到每分钟复查一次，避免长期空转占 CPU
+      if (wm.learnDone && _learnTicks % 10 !== 0) return;
+      _learnBusy = true;
+      try {
+        const r = await api("/api/world/map/learn?dir=" + encodeURIComponent(wm.dir) +
+          "&dim=" + $("#mapDim").value + "&budget=600");
+        if (r.ok && r.data) {
+          const grew = Number(r.data.learned || 0) > wm.learned;
+          wm.learned = Number(r.data.learned || 0);
+          wm.total = Number(r.data.total || 0);
+          wm.learnDone = !!r.data.done;
+          updateLearnLabel();
+          if (grew) loadMap();
+        }
+      } finally { _learnBusy = false; }
+    }, 6000);
   }
 
   // ---------------- 皮肤 ----------------

@@ -551,6 +551,226 @@ def region_files(world_dir: str, dim: str = "overworld") -> Dict[Tuple[int, int]
     return out
 
 
+# ==================================================================
+# 区块地图缓存：把渲染过的区块颜色持久保存到磁盘
+# 存档跑的时候不断加载新区块 -> 定时 learn 补进来 -> 地图越玩越完整
+# 每个 region 一个定长 bin：1024 个槽，每槽 1 字节标记 + 16x16x3 字节 RGB
+# ==================================================================
+SLOT = 769
+_STORE_FILES: Dict[Any, Any] = {}
+_STORE_FLAGS: Dict[Any, Any] = {}
+_STORE_META: Dict[str, Dict[str, Any]] = {}
+_STORE_CHECKED: set = set()
+
+
+def _cache_dir(world_dir: str, dim: str) -> str:
+    import hashlib
+    key = "".join(c for c in os.path.basename(os.path.normpath(world_dir))
+                  if c.isalnum() or c in "-_")[:40] or "world"
+    h = hashlib.md5(os.path.normpath(world_dir).encode("utf-8", "replace")).hexdigest()[:8]
+    p = os.path.join(core.ROOT_DIR, "maps", "_cache", key + "-" + h, dim)
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+def _bin_path(d: str, rx: int, rz: int) -> str:
+    return os.path.join(d, "r.%d.%d.bin" % (rx, rz))
+
+
+def _store_meta(d: str) -> Dict[str, Any]:
+    m = _STORE_META.get(d)
+    if m is None:
+        try:
+            with open(os.path.join(d, "meta.json"), "r", encoding="utf-8") as f:
+                m = json.load(f)
+        except Exception:
+            m = {}
+        if not isinstance(m, dict):
+            m = {}
+        _STORE_META[d] = m
+    return m
+
+
+def _store_save_meta(d: str) -> None:
+    try:
+        with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump(_STORE_META.get(d, {}), f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def _bin_file(d: str, rx: int, rz: int):
+    k = (d, rx, rz)
+    f = _STORE_FILES.get(k)
+    if f is None or f.closed:
+        p = _bin_path(d, rx, rz)
+        need = SLOT * 1024
+        if not os.path.isfile(p) or os.path.getsize(p) != need:
+            with open(p, "wb") as g:
+                g.truncate(need)
+        f = open(p, "r+b")
+        _STORE_FILES[k] = f
+        if len(_STORE_FILES) > 32:
+            for kk, ff in list(_STORE_FILES.items())[:-16]:
+                try:
+                    ff.close()
+                except Exception:
+                    pass
+                _STORE_FILES.pop(kk, None)
+    return f
+
+
+def _store_flags(d: str, rx: int, rz: int) -> bytearray:
+    k = (d, rx, rz)
+    fl = _STORE_FLAGS.get(k)
+    if fl is None:
+        f = _bin_file(d, rx, rz)
+        f.seek(0)
+        raw = f.read(SLOT * 1024)
+        fl = bytearray(raw[i * SLOT] if i * SLOT < len(raw) else 0 for i in range(1024))
+        _STORE_FLAGS[k] = fl
+    return fl
+
+
+def _store_ensure(d: str, path: str, rx: int, rz: int) -> None:
+    """region 文件变了就重学它（游戏保存新区块时 size/mtime 会变）。"""
+    try:
+        st = os.stat(path)
+        sig = [int(st.st_mtime), int(st.st_size)]
+    except Exception:
+        return
+    meta = _store_meta(d)
+    key = os.path.basename(path)
+    if meta.get(key) == sig:
+        return
+    f = _STORE_FILES.pop((d, rx, rz), None)
+    if f:
+        try:
+            f.close()
+        except Exception:
+            pass
+    _STORE_FLAGS.pop((d, rx, rz), None)
+    try:
+        os.remove(_bin_path(d, rx, rz))
+    except Exception:
+        pass
+    meta[key] = sig
+    _store_save_meta(d)
+
+
+def _store_has(d: str, rx: int, rz: int, ccx: int, ccz: int) -> bool:
+    return _store_flags(d, rx, rz)[ccz * 32 + ccx] == 1
+
+
+def _store_put(d: str, rx: int, rz: int, ccx: int, ccz: int, rgb: bytes) -> None:
+    f = _bin_file(d, rx, rz)
+    idx = ccz * 32 + ccx
+    f.seek(idx * SLOT)
+    f.write(b"\x01" + rgb)
+    f.flush()
+    _store_flags(d, rx, rz)[idx] = 1
+
+
+def _store_get(d: str, rx: int, rz: int, ccx: int, ccz: int) -> Optional[bytes]:
+    f = _bin_file(d, rx, rz)
+    f.seek((ccz * 32 + ccx) * SLOT)
+    b = f.read(SLOT)
+    return b[1:] if len(b) == SLOT and b[0] == 1 else None
+
+
+def _chunk_rgb(root: Dict[str, Any]) -> bytes:
+    """把一个区块压成 16x16 的颜色表（光照也在这里固化，之后直接读缓存）。"""
+    pix = ChunkPixels.render(root)
+    out = bytearray(16 * 16 * 3)
+    if not pix:
+        return bytes(out)
+    names, ys = pix
+    for i, nm in enumerate(names):
+        c = block_color(nm)
+        if c is None:
+            continue
+        sh = 1.0
+        if i % 16 < 15 and i + 1 < len(ys):
+            dy = ys[i + 1] - ys[i]
+            sh = 1.0 + max(-0.28, min(0.28, dy * 0.09))
+        o = i * 3
+        out[o] = max(0, min(255, int(c[0] * sh)))
+        out[o + 1] = max(0, min(255, int(c[1] * sh)))
+        out[o + 2] = max(0, min(255, int(c[2] * sh)))
+    return bytes(out)
+
+
+def _store_learn_chunk(d: str, path: str, rx: int, rz: int,
+                       ccx: int, ccz: int, reg) -> None:
+    ch = reg.chunk(ccx, ccz)
+    _store_put(d, rx, rz, ccx, ccz, _chunk_rgb(ch) if ch else bytes(768))
+    _REGION_CACHE[path] = reg
+
+
+def store_stats(world_dir: str, dim: str,
+                regs: Optional[Dict[Tuple[int, int], str]] = None) -> Dict[str, int]:
+    """已记住 / 全部区块数。"""
+    if regs is None:
+        regs = region_files(world_dir, dim)
+    d = _cache_dir(world_dir, dim)
+    total = learned = 0
+    for (rx, rz), path in regs.items():
+        try:
+            reg = _REGION_CACHE.get(path) or Region(path)
+            _REGION_CACHE[path] = reg
+            _store_ensure(d, path, rx, rz)
+        except Exception:
+            continue
+        fl = _store_flags(d, rx, rz)
+        for i in range(1024):
+            off, cnt = reg.entries[i]
+            if off and cnt:
+                total += 1
+                if fl[i] == 1:
+                    learned += 1
+    return {"learned": learned, "total": total}
+
+
+def learn_chunks(world_dir: str, dim: str = "overworld",
+                 budget: int = 240) -> Dict[str, Any]:
+    """增量学习：每次最多解析 budget 个新区块，供前端定时调用（边玩边记）。"""
+    regs = region_files(world_dir, dim)
+    if not regs:
+        return {"learned": 0, "total": 0, "done": True, "added": 0}
+    d = _cache_dir(world_dir, dim)
+    todo = []
+    total = learned = 0
+    for (rx, rz), path in sorted(regs.items()):
+        try:
+            reg = _REGION_CACHE.get(path) or Region(path)
+            _REGION_CACHE[path] = reg
+            _store_ensure(d, path, rx, rz)
+        except Exception:
+            continue
+        fl = _store_flags(d, rx, rz)
+        for i in range(1024):
+            off, cnt = reg.entries[i]
+            if not (off and cnt):
+                continue
+            total += 1
+            if fl[i] == 1:
+                learned += 1
+            else:
+                todo.append((path, rx, rz, i & 31, i >> 5, reg))
+    added = 0
+    for (path, rx, rz, ccx, ccz, reg) in todo:
+        if added >= budget:
+            break
+        try:
+            _store_learn_chunk(d, path, rx, rz, ccx, ccz, reg)
+        except Exception:
+            continue
+        added += 1
+        learned += 1
+    return {"learned": learned, "total": total,
+            "done": learned >= total, "added": added}
+
+
 def render_map(world_dir: str, dim: str = "overworld",
                center: Tuple[float, float] = (0, 0), span: int = 512,
                tile: int = 256, marks: bool = True) -> Dict[str, Any]:
@@ -568,8 +788,11 @@ def render_map(world_dir: str, dim: str = "overworld",
     px_per_block = tile / float(span)
     img = bytearray(b"\x00" * (tile * tile * 3))
     filled = 0
+    cache = _cache_dir(world_dir, dim)
+    for (rx, rz), path in regs.items():
+        _store_ensure(cache, path, rx, rz)
 
-    # 逐像素采样一次（简单、够用）
+    # 逐像素采样：区块颜色来自持久缓存，没有就现场解析并写回（下次直接读）
     for py in range(tile):
         wz = int(z0 + py / px_per_block)
         for px_ in range(tile):
@@ -580,11 +803,7 @@ def render_map(world_dir: str, dim: str = "overworld",
                 continue
             ccx, ccz = (wx >> 4) & 31, (wz >> 4) & 31
             try:
-                # 同一区块的 NBT 只解压一次：逐像素重复 reg.chunk() 会让
-                # 480x480 的图慢到几十秒甚至更久
-                key = (path, ccx, ccz)
-                pix = _CHUNK_CACHE.get(key, _CHUNK_MISS)
-                if pix is _CHUNK_MISS:
+                if not _store_has(cache, rx, rz, ccx, ccz):
                     reg = _REGION_CACHE.get(path)
                     if reg is None:
                         reg = Region(path)
@@ -596,44 +815,31 @@ def render_map(world_dir: str, dim: str = "overworld",
                                 except Exception:
                                     pass
                                 _REGION_CACHE.pop(k, None)
-                    ch = reg.chunk(ccx, ccz)
-                    pix = ChunkPixels.render(ch) if ch else None
-                    _CHUNK_CACHE[key] = pix
-                    if len(_CHUNK_CACHE) > 4096:
-                        _CHUNK_CACHE.clear()
-                        _CHUNK_CACHE[key] = pix
-                if not pix:
+                    _store_learn_chunk(cache, path, rx, rz, ccx, ccz, reg)
+                data = _store_get(cache, rx, rz, ccx, ccz)
+                if data is None:
                     continue
-                names, ys = pix
                 i = ((wz & 15) * 16) + (wx & 15)
-                nm = names[i] if i < len(names) else "minecraft:air"
-                y = ys[i] if i < len(ys) else 64
-                col = block_color(nm)
-                if col is None:
+                o = i * 3
+                r, g, b = data[o], data[o + 1], data[o + 2]
+                if r == 0 and g == 0 and b == 0:
                     continue
-                # 简单光照：相邻高度差做明暗
-                shade = 1.0
-                if (wx & 15) < 15:
-                    j = (wz & 15) * 16 + ((wx & 15) + 1)
-                    if j < len(ys):
-                        dy = (ys[j] - y)
-                        shade = 1.0 + max(-0.28, min(0.28, dy * 0.09))
-                o = (py * tile + px_) * 3
-                img[o] = max(0, min(255, int(col[0] * shade)))
-                img[o + 1] = max(0, min(255, int(col[1] * shade)))
-                img[o + 2] = max(0, min(255, int(col[2] * shade)))
+                po = (py * tile + px_) * 3
+                img[po] = r; img[po + 1] = g; img[po + 2] = b
                 filled += 1
             except Exception:
                 continue
 
     png = _to_png(bytes(img), tile, tile)
     import base64
+    stat = store_stats(world_dir, dim, regs)
     return {
         "ok": True,
         "png": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
         "bounds": {"x0": x0, "z0": z0, "x1": cx + half, "z1": cz + half, "span": span},
         "coverage": round(filled / float(tile * tile), 3),
         "dim": dim,
+        "learned": stat["learned"], "total": stat["total"],
     }
 
 
@@ -663,6 +869,15 @@ def clear_cache() -> None:
         r.close()
     _REGION_CACHE.clear()
     _CHUNK_CACHE.clear()
+    for f in _STORE_FILES.values():
+        try:
+            f.close()
+        except Exception:
+            pass
+    _STORE_FILES.clear()
+    _STORE_FLAGS.clear()
+    _STORE_META.clear()
+    _STORE_CHECKED.clear()
     _CHUNK_CACHE.clear()
 
 
@@ -779,16 +994,38 @@ STRUCTURE_GUESS = {
 }
 
 
-def guess_structures(seed: int, x0: int, z0: int, x1: int, z1: int) -> List[Dict[str, Any]]:
+# 各结构所属维度：主世界绝不能出现末地城 / 下界要塞 / 堡垒遗迹
+NETHER_ONLY = {
+    "minecraft:fortress", "minecraft:nether_fortress",
+    "minecraft:bastion_remnant", "minecraft:nether_fossil",
+}
+END_ONLY = {"minecraft:end_city"}
+BOTH_PORTAL = {"minecraft:ruined_portal"}
+
+
+def structures_for_dim(sid: str, dim: str) -> bool:
+    """这个结构 id 是否属于该维度。"""
+    if dim == "nether":
+        return sid in NETHER_ONLY or sid in BOTH_PORTAL
+    if dim == "end":
+        return sid in END_ONLY
+    return sid not in NETHER_ONLY and sid not in END_ONLY
+
+
+def guess_structures(seed: int, x0: int, z0: int, x1: int, z1: int,
+                     dim: str = "overworld") -> List[Dict[str, Any]]:
     """
     按 seed 推测结构位置（1.13+ 通用 salted-region 算法）。
     标注 real=False，UI 上会提示为推测。
+    dim 用来过滤维度专属结构，避免主世界画出末地城。
     """
     out: List[Dict[str, Any]] = []
     if seed is None:
         return out
     for sid, (spacing, separation, salt) in STRUCTURE_GUESS.items():
         if not spacing or spacing <= 1:
+            continue
+        if not structures_for_dim(sid, dim):
             continue
         off = max(1, spacing - separation)
         rx0, rx1 = int(math.floor(x0 / 16.0 / spacing)) - 1, int(math.ceil(x1 / 16.0 / spacing)) + 1
@@ -860,3 +1097,142 @@ def save_marks(world_dir: str, data: Dict[str, Any]) -> Dict[str, Any]:
     with open(p, "w", encoding="utf-8") as f:
         json.dump(cur, f, ensure_ascii=False, indent=1)
     return cur
+
+
+# ==================================================================
+# SeedMap：由「用户选择的种子」推测地形 / 群系底图
+# ==================================================================
+
+def seed_to_long(raw: Any) -> Optional[int]:
+    """数字种子直接用；文字种子按 Java String.hashCode 转成 32 位有符号数。"""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except Exception:
+        pass
+    h = 0
+    for ch in s:
+        h = (31 * h + ord(ch)) & 0xFFFFFFFF
+    return h - 0x100000000 if h >= 0x80000000 else h
+
+
+BIOME_PALETTE = {
+    "deep_ocean": ("深海", (18, 52, 104)),
+    "ocean": ("海洋", (32, 88, 148)),
+    "beach": ("沙滩", (216, 202, 148)),
+    "plains": ("平原", (120, 168, 76)),
+    "forest": ("森林", (54, 120, 56)),
+    "birch_forest": ("白桦林", (140, 180, 100)),
+    "jungle": ("丛林", (42, 130, 52)),
+    "swamp": ("沼泽", (68, 98, 68)),
+    "desert": ("沙漠", (224, 198, 122)),
+    "savanna": ("热带草原", (182, 168, 82)),
+    "badlands": ("恶地", (178, 96, 60)),
+    "taiga": ("针叶林", (74, 112, 92)),
+    "snowy": ("雪原", (226, 236, 242)),
+    "mountains": ("山地", (126, 124, 118)),
+    "peak": ("雪峰", (200, 208, 214)),
+    "nether_wastes": ("下界荒地", (104, 44, 38)),
+    "nether_lava": ("岩浆海", (168, 72, 32)),
+    "end": ("末地", (196, 190, 160)),
+    "end_void": ("末地虚空", (152, 148, 132)),
+}
+
+
+def _h2(seed: int, x: int, z: int) -> float:
+    h = (seed ^ (x * 374761393) ^ (z * 668265263)) & 0xFFFFFFFF
+    h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
+    return ((h ^ (h >> 16)) & 0xFFFF) / 65535.0
+
+
+def _vnoise(seed: int, x: float, z: float, scale: float, salt: int = 0) -> float:
+    """平滑值噪声（确定性，同一 seed 永远得到同一张图）。"""
+    fx, fz = x / scale, z / scale
+    ix, iz = math.floor(fx), math.floor(fz)
+    tx, tz = fx - ix, fz - iz
+    tx = tx * tx * (3 - 2 * tx)
+    tz = tz * tz * (3 - 2 * tz)
+    s = seed + salt
+    a, b = _h2(s, ix, iz), _h2(s, ix + 1, iz)
+    c, d = _h2(s, ix, iz + 1), _h2(s, ix + 1, iz + 1)
+    return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz
+
+
+def biome_at(seed: int, wx: float, wz: float, dim: str = "overworld") -> str:
+    """按气候噪声推测某点的群系（推测，不保证与 MC 生成完全一致）。"""
+    if dim == "nether":
+        return "nether_lava" if _vnoise(seed, wx, wz, 220, 71) < 0.28 else "nether_wastes"
+    if dim == "end":
+        return "end_void" if _vnoise(seed, wx, wz, 380, 97) < 0.35 else "end"
+    cont = 0.62 * _vnoise(seed, wx, wz, 700, 11) + 0.38 * _vnoise(seed, wx, wz, 260, 23)
+    temp = _vnoise(seed, wx, wz, 600, 37)
+    humid = _vnoise(seed, wx, wz, 450, 53)
+    height = 0.65 * _vnoise(seed, wx, wz, 260, 67) + 0.35 * _vnoise(seed, wx, wz, 90, 83)
+    if cont < 0.36:
+        return "deep_ocean"
+    if cont < 0.44:
+        return "ocean"
+    if cont < 0.475:
+        return "beach"
+    if height > 0.75:
+        return "peak" if temp < 0.35 else "mountains"
+    if temp > 0.70 and humid < 0.38:
+        return "badlands" if height > 0.62 else "desert"
+    if temp > 0.66 and humid > 0.66:
+        return "jungle"
+    if 0.42 < temp < 0.72 and humid > 0.74:
+        return "swamp"
+    if temp < 0.28:
+        return "snowy" if humid < 0.6 else "taiga"
+    if temp > 0.66 and humid < 0.55:
+        return "savanna"
+    if humid > 0.60:
+        return "birch_forest" if temp > 0.55 else "forest"
+    return "plains"
+
+
+def render_seedmap(seed: int, dim: str = "overworld",
+                   center: Tuple[float, float] = (0, 0),
+                   span: int = 2048, tile: int = 320) -> Dict[str, Any]:
+    """画一张种子推测地形图（群系色块），解决「SeedMap 一片超平坦」。"""
+    import base64
+    cx, cz = center
+    x0, z0 = cx - span / 2.0, cz - span / 2.0
+    px_per_block = tile / float(span)
+    img = bytearray(tile * tile * 3)
+    counts: Dict[str, int] = {}
+    step = max(1, tile // 160)          # 块采样，群系边界本来就是渐变的
+    cells = 0
+    for by in range(0, tile, step):
+        wz = z0 + by / px_per_block
+        for bx in range(0, tile, step):
+            wx = x0 + bx / px_per_block
+            key = biome_at(seed, wx, wz, dim)
+            counts[key] = counts.get(key, 0) + 1
+            cells += 1
+            r, g, b = BIOME_PALETTE[key][1]
+            sh = 0.88 + 0.24 * _vnoise(seed, wx, wz, 48, 131)
+            pix = bytes((max(0, min(255, int(r * sh))),
+                         max(0, min(255, int(g * sh))),
+                         max(0, min(255, int(b * sh)))))
+            for yy in range(by, min(by + step, tile)):
+                base = yy * tile * 3
+                for xx in range(bx, min(bx + step, tile)):
+                    o = base + xx * 3
+                    img[o] = pix[0]; img[o + 1] = pix[1]; img[o + 2] = pix[2]
+    legend = []
+    for k, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        cn, col = BIOME_PALETTE[k]
+        legend.append({"id": k, "name": cn,
+                       "color": "#%02x%02x%02x" % col,
+                       "ratio": round(n / float(cells or 1), 4)})
+    png = _to_png(bytes(img), tile, tile)
+    return {
+        "ok": True,
+        "png": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+        "bounds": {"x0": x0, "z0": z0, "x1": cx + span / 2.0,
+                   "z1": cz + span / 2.0, "span": span},
+        "legend": legend, "dim": dim, "seed": seed, "coverage": 1.0,
+    }

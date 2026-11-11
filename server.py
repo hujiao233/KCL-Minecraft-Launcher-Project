@@ -1874,6 +1874,23 @@ def api_world_map():
     return ok(r) if r.get("ok") else err(r.get("msg", "渲染失败"), 200)
 
 
+@app.get("/api/world/map/learn")
+def api_world_map_learn():
+    """增量记住存档区块：前端定时调用，游戏边跑地图边长出来。"""
+    d = request.args.get("dir", "").strip()
+    dim = request.args.get("dim", "overworld")
+    if not d or not os.path.isdir(d):
+        return err("存档目录不存在", 200)
+    try:
+        budget = max(1, min(2000, int(request.args.get("budget", 240))))
+    except Exception:
+        budget = 240
+    try:
+        return ok(world.learn_chunks(d, dim, budget))
+    except Exception as e:  # noqa: BLE001
+        return err("学习失败：" + str(e), 200)
+
+
 @app.get("/api/world/structures")
 def api_world_structures():
     """结构位置：优先读存档真实数据，没有就按 seed 推测。"""
@@ -1903,23 +1920,47 @@ def api_world_structures():
         except Exception:
             seed = None
     if seed_arg:
-        try:
-            seed = int(seed_arg)
-        except Exception:
-            pass
+        # 支持文字种子：非数字按 Java String.hashCode 换算
+        seed = world.seed_to_long(seed_arg)
+        if seed is None:
+            return err("种子不正确")
 
     real = world.scan_structures(d, dim) if d else []
     guessed = []
     if seed is not None:
         have = set((s["id"], s["x"] // 16, s["z"] // 16) for s in real)
-        for g in world.guess_structures(seed, x0, z0, x1, z1):
+        for g in world.guess_structures(seed, x0, z0, x1, z1, dim):
             if (g["id"], g["x"] // 16, g["z"] // 16) in have:
                 continue
             guessed.append(g)
-    slimes = world.slime_chunks(seed, x0, z0, x1, z1) if seed is not None else []
-    return ok({"seed": seed, "structures": real + guessed,
+    # 史莱姆区块只存在于主世界
+    slimes = (world.slime_chunks(seed, x0, z0, x1, z1)
+              if seed is not None and dim == "overworld" else [])
+    return ok({"seed": seed, "dim": dim, "structures": real + guessed,
                "realCount": len(real), "guessCount": len(guessed),
                "slime": slimes, "bounds": {"x0": x0, "z0": z0, "x1": x1, "z1": z1}})
+
+
+@app.get("/api/world/seedmap")
+def api_world_seedmap():
+    """按用户选择的 seed + 维度绘制推测地形（群系）底图。"""
+    seed = world.seed_to_long(request.args.get("seed", ""))
+    if seed is None:
+        return err("请先填写种子", 200)
+    dim = request.args.get("dim", "overworld")
+    if dim not in ("overworld", "nether", "end"):
+        dim = "overworld"
+    try:
+        cx = float(request.args.get("cx", 0))
+        cz = float(request.args.get("cz", 0))
+        span = max(128, min(8192, int(request.args.get("span", 2048))))
+        tile = max(64, min(768, int(request.args.get("tile", 320))))
+    except Exception:
+        return err("参数不正确", 200)
+    try:
+        return ok(world.render_seedmap(seed, dim, (cx, cz), span, tile))
+    except Exception as e:  # noqa: BLE001
+        return err("绘制失败：" + str(e), 200)
 
 
 @app.get("/api/world/marks")
