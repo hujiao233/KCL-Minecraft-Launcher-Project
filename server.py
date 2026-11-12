@@ -1259,6 +1259,21 @@ def api_update_check():
 # 更新日志（新版本发版时往列表头部追加一条）
 CHANGELOG: List[Dict[str, Any]] = [
     {
+        "version": "1.2.4",
+        "date": "开发中",
+        "title": "下载不再怕网络劫持，登录报错说人话",
+        "items": [
+            "修好开着加速器（Steamcommunity302 / Watt Toolkit 一类）时 Java 自动安装失败的问题："
+            "Mojang 运行时清单优先走 bmclapi 镜像，Adoptium 兜底改用清华镜像直链，"
+            "不再依赖会被劫持证书的 github.com 和 piston-meta.mojang.com；"
+            "安装失败时保留具体原因，不再只显示「自动补齐 Java 失败」",
+            "修好外置登录多角色账号报「访问令牌未绑定角色，请在刷新时指定角色」："
+            "刷新令牌时自动带上已选角色，角色重建或改名后 UUID 会跟着更新",
+            "皮肤站的报错改为给出能照着做的指引（例如先到皮肤站创建角色再登录），不再只甩英文原文",
+            "使用说明补充与 PCL 共用同一个 .minecraft 的步骤与注意事项",
+        ],
+    },
+    {
         "version": "1.2.3",
         "date": "2026-10-30",
         "title": "游戏目录跟着启动器走，版本库也补全了",
