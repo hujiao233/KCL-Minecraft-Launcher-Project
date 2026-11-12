@@ -215,7 +215,7 @@ def ygg_authenticate(server: str, username: str, password: str) -> Dict[str, Any
     profs = d.get("availableProfiles") or []
     sel = d.get("selectedProfile") or (profs[0] if profs else None)
     if not sel:
-        return {"ok": False, "msg": "该账号下没有 Minecraft 角色"}
+        return {"ok": False, "msg": "该账号下没有 Minecraft 角色（请到皮肤站网页「角色管理」创建角色后重新登录）"}
     return {
         "ok": True,
         "account": {
@@ -251,7 +251,8 @@ def ygg_refresh(server: str, token: str, client_token: str = "") -> Dict[str, An
         "clientToken": client_token,
         "requestUser": True})
     if not d.get("accessToken"):
-        return {"ok": False, "msg": str(d.get("errorMessage") or "令牌已失效，请重新登录")}
+        msg = str(d.get("errorMessage") or "令牌已失效，请重新登录")
+        return {"ok": False, "msg": core.friendly_ygg_error(server, msg)}
     sel = d.get("selectedProfile") or {}
     return {"ok": True, "accessToken": d["accessToken"], "name": sel.get("name", "")}
 

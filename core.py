@@ -2026,6 +2026,25 @@ def ygg_authenticate(server: str, username: str, password: str,
     }
 
 
+def friendly_ygg_error(server: str, msg: str) -> str:
+    """
+    把皮肤站的原始报错翻译成用户能照着做的操作。
+    最常见的一条：账号在皮肤站上没有创建角色（The access token has no profile assigned），
+    原文直接抛出来用户根本不知道要去皮肤站建角色。
+    """
+    msg = str(msg or "").strip()
+    if not msg:
+        return msg
+    low = msg.lower()
+    site = (server or "").split("/api/yggdrasil")[0] or "https://littleskin.cn"
+    if ("no profile assigned" in low or "未绑定角色" in msg
+            or "没有绑定角色" in msg or "没有角色" in msg):
+        return ("这个皮肤站账号还没有创建 Minecraft 角色：请先登录 %s，"
+                "在「用户中心 → 角色管理」里创建一个角色，再回启动器重新登录。"
+                "（皮肤站原话：%s）" % (site, msg))
+    return msg
+
+
 def ygg_refresh(server: str, access_token: str, client_token: str = "") -> Dict[str, Any]:
     """刷新令牌，成功返回新的 accessToken / 角色。"""
     if not server or not access_token:
@@ -2040,9 +2059,19 @@ def ygg_refresh(server: str, access_token: str, client_token: str = "") -> Dict[
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "msg": f"无法连接登录服务器：{e}"}
     if r.status_code in (403, 401):
-        return {"ok": False, "msg": "令牌已失效，需要重新登录"}
+        try:
+            raw = (r.json() or {}).get("errorMessage") or ""
+        except Exception:      # noqa: BLE001
+            raw = ""
+        return {"ok": False,
+                "msg": friendly_ygg_error(server, raw) if raw else "令牌已失效，需要重新登录"}
     if r.status_code != 200:
-        return {"ok": False, "msg": f"刷新失败（HTTP {r.status_code}）"}
+        try:
+            raw = (r.json() or {}).get("errorMessage") or ""
+        except Exception:      # noqa: BLE001
+            raw = ""
+        return {"ok": False,
+                "msg": friendly_ygg_error(server, raw) if raw else f"刷新失败（HTTP {r.status_code}）"}
     d = r.json()
     sel = d.get("selectedProfile") or {}
     return {"ok": True, "accessToken": d.get("accessToken", ""),
