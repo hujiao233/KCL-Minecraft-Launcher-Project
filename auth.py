@@ -244,17 +244,30 @@ def ygg_validate(server: str, token: str, client_token: str = "") -> bool:
         return False
 
 
-def ygg_refresh(server: str, token: str, client_token: str = "") -> Dict[str, Any]:
+def ygg_refresh(server: str, token: str, client_token: str = "",
+                selected_profile: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """
+    刷新外置登录令牌。
+    账号下有多个角色时，皮肤站要求必须带 selectedProfile 指定角色，
+    否则报「访问令牌未绑定角色，请在刷新时指定角色」。
+    """
     base = (server or LITTESKIN_API).rstrip("/")
-    d = _post_json(base + "/authserver/refresh", {
+    payload: Dict[str, Any] = {
         "accessToken": token,
         "clientToken": client_token,
-        "requestUser": True})
+        "requestUser": True}
+    sel = dict(selected_profile or {})
+    if sel.get("id"):
+        sel["id"] = str(sel["id"]).replace("-", "")   # 皮肤站要求 32 位无连字符
+        payload["selectedProfile"] = sel
+    d = _post_json(base + "/authserver/refresh", payload)
     if not d.get("accessToken"):
         msg = str(d.get("errorMessage") or "令牌已失效，请重新登录")
         return {"ok": False, "msg": core.friendly_ygg_error(server, msg)}
-    sel = d.get("selectedProfile") or {}
-    return {"ok": True, "accessToken": d["accessToken"], "name": sel.get("name", "")}
+    sel2 = d.get("selectedProfile") or {}
+    return {"ok": True, "accessToken": d["accessToken"],
+            "uuid": _fmt_uuid(sel2.get("id") or sel.get("id") or ""),
+            "name": sel2.get("name", "")}
 
 
 def preflight_token(account: Dict[str, Any]) -> Dict[str, Any]:
@@ -269,10 +282,20 @@ def preflight_token(account: Dict[str, Any]) -> Dict[str, Any]:
         tok = account.get("accessToken") or ""
         if ygg_validate(server, tok, account.get("clientToken") or ""):
             return {"ok": True, "account": account}
-        r = ygg_refresh(server, tok, account.get("clientToken") or "")
+        # 把账户里存的角色带上，账号下有多个角色时皮肤站要求必须指定
+        sel: Dict[str, Any] | None = None
+        if account.get("uuid") and account.get("name"):
+            sel = {"id": account.get("uuid"), "name": account.get("name")}
+        else:
+            profs = account.get("profiles")
+            if isinstance(profs, list) and profs and isinstance(profs[0], dict) and profs[0].get("id"):
+                sel = {"id": profs[0].get("id"), "name": profs[0].get("name", "")}
+        r = ygg_refresh(server, tok, account.get("clientToken") or "", selected_profile=sel)
         if not r.get("ok"):
             return {"ok": False, "msg": r.get("msg", "第三方令牌已失效，请重新登录")}
         account["accessToken"] = r["accessToken"]
+        if r.get("uuid"):
+            account["uuid"] = r["uuid"]   # 角色重建/换名后 uuid 会变，跟着刷新
         if r.get("name"):
             account["name"] = r["name"]
         _save_account(cfg, account)

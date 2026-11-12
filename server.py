@@ -1006,7 +1006,9 @@ def api_auth_refresh():
     if not acc or acc.get("type") != "yggdrasil":
         return err("该账户不是外置登录账户")
     r = core.ygg_refresh(acc.get("server", ""), acc.get("accessToken", ""),
-                         acc.get("clientToken", ""))
+                         acc.get("clientToken", ""),
+                         selected_profile={"id": acc.get("uuid", ""),
+                                           "name": acc.get("name", "")})
     if not r.get("ok"):
         return err(r.get("msg", "刷新失败"))
     core.add_ygg_account(r.get("name") or acc["name"], r.get("uuid") or acc["uuid"],

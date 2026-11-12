@@ -2045,13 +2045,21 @@ def friendly_ygg_error(server: str, msg: str) -> str:
     return msg
 
 
-def ygg_refresh(server: str, access_token: str, client_token: str = "") -> Dict[str, Any]:
-    """刷新令牌，成功返回新的 accessToken / 角色。"""
+def ygg_refresh(server: str, access_token: str, client_token: str = "",
+                selected_profile: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """
+    刷新令牌，成功返回新的 accessToken / 角色。
+    账号下有多个角色时，皮肤站要求必须带 selectedProfile 指定角色。
+    """
     if not server or not access_token:
         return {"ok": False, "msg": "缺少令牌"}
     payload: Dict[str, Any] = {"accessToken": access_token}
     if client_token:
         payload["clientToken"] = client_token
+    sel = dict(selected_profile or {})
+    if sel.get("id"):
+        sel["id"] = str(sel["id"]).replace("-", "")   # 皮肤站要求 32 位无连字符
+        payload["selectedProfile"] = sel
     try:
         r = requests.post(ygg_url(server, "authserver/refresh"), json=payload,
                           timeout=(8, 20),
