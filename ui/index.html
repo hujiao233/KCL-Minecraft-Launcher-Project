@@ -1606,8 +1606,9 @@ body.booting .app { opacity: 0; }
         <!-- SeedMap：选种子，不读存档 -->
         <div class="map-toolbar" id="mapSeedRow" hidden>
           <input class="input" id="mapSeed" style="width:230px" placeholder="世界种子：数字或任意文字">
+          <select class="select" id="mapVer" style="width:104px" title="MC 版本：不同版本的种子/群系算法不同"></select>
           <button class="btn primary sm" id="btnSeedDraw">绘制 SeedMap</button>
-          <span class="hint" style="margin:0">种子 + 维度决定地形与结构位置；这是推测图，不读取存档。支持文字种子。</span>
+          <span class="hint" style="margin:0" id="mapSeedHint">按版本精确计算群系与结构（cubiomes）。支持文字种子。</span>
         </div>
 
         <div class="map-stage" id="mapStage">
@@ -6565,9 +6566,12 @@ body.booting .app { opacity: 0; }
     }
     const dim = $("#mapDim").value;
     const dimName = $("#mapDim").selectedOptions[0].textContent;
+    const ver = ($("#mapVer").value || "").trim();
+    try { localStorage.setItem("kcl.mapVer", ver); } catch (e) {}
     $("#mapHint").textContent = "按种子绘制中…";
     setMapEmpty(null);
-    const base = "dim=" + dim + "&cx=" + Math.round(m.cx) + "&cz=" + Math.round(m.cz);
+    const base = "dim=" + dim + "&cx=" + Math.round(m.cx) + "&cz=" + Math.round(m.cz) +
+      "&ver=" + encodeURIComponent(ver);
     const r = await api("/api/world/seedmap?seed=" + encodeURIComponent(raw) + "&" +
       base + "&span=" + Math.round(m.span) + "&tile=320");
     if (!r.ok) {
@@ -6585,7 +6589,9 @@ body.booting .app { opacity: 0; }
     img.onload = () => {
       if (mapMode() !== "seed" || ($("#mapSeed").value || "").trim() !== raw) return;
       m.img = img;
-      $("#mapHint").textContent = "SeedMap · " + raw + " · " + dimName;
+      const acc = r.data.accurate ? "精确" : "近似推测";
+      $("#mapHint").textContent = "SeedMap · " + raw + " · " + dimName +
+        " · " + (r.data.ver || ver) + " · " + acc;
       setMapEmpty(null);
       drawMap();
     };
@@ -6596,7 +6602,7 @@ body.booting .app { opacity: 0; }
       drawMap();
     };
     img.src = r.data.png;
-    // 结构推测：后端按维度过滤，主世界不会再冒出末地城
+    // 结构推测：cubiomes 精确模式（带群系校验）或旧近似，均按维度过滤
     const r2 = await api("/api/world/structures?seed=" + encodeURIComponent(raw) + "&" +
       base + "&span=" + Math.round(m.span * 2));
     if (r2.ok) {
@@ -6862,9 +6868,25 @@ body.booting .app { opacity: 0; }
       await post("/api/world/marks", { dir: m.dir, marks: m.marks });
     });
 
-    // SeedMap：选种子（数字或文字）+ 选维度
+    // SeedMap：选种子（数字或文字）+ 选版本 + 选维度
+    (async () => {
+      try {
+        const rv = await api("/api/map/versions");
+        if (!rv.ok) return;
+        const sel = $("#mapVer");
+        sel.innerHTML = (rv.data.versions || [])
+          .map((v) => `<option value="${esc(v.id)}">MC ${esc(v.label)}</option>`).join("");
+        const saved = localStorage.getItem("kcl.mapVer") || rv.data.default || "";
+        if (Array.from(sel.options).some((o) => o.value === saved)) sel.value = saved;
+        if (!rv.data.accurate) {
+          const h = $("#mapSeedHint");
+          if (h) h.textContent = "cubiomes 组件缺失，当前为近似推测图（地形边界与游戏不完全一致）。";
+        }
+      } catch (e) {}
+    })();
     const drawSeed = () => { const m = mapState(); m.cx = 0; m.cz = 0; loadSeedMap(); };
     $("#btnSeedDraw").addEventListener("click", drawSeed);
+    $("#mapVer").addEventListener("change", drawSeed);
     $("#mapSeed").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); drawSeed(); }
     });

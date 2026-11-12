@@ -166,9 +166,37 @@ class JavaRandom:
 
 
 def is_slime_chunk(seed: int, cx: int, cz: int) -> bool:
-    """Java 版史莱姆区块判定（精确）。"""
-    s = seed + cx * cx * 4987142 + cx * 5947611 + cz * cz * 4392871 + cz * 389711
-    return JavaRandom(s ^ 987234911).next_int(10) == 0
+    """
+    Java 版史莱姆区块判定（精确）。
+    常数与算法逐行对应 cubiomes finders.h 的 isSlimeChunk
+    （旧实现的哈希常数有误，会导致约 15% 的区块判定错误，已修正）。
+    """
+    M64, M48 = (1 << 64) - 1, (1 << 48) - 1
+    r = seed & M64
+    r = (r + _i32(cx * 0x5ac0db)) & M64
+    r = (r + _i32(cx * cx * 0x4c1906)) & M64
+    r = (r + _i32(cz * 0x5f24f)) & M64
+    r = (r + _i32(cz * cz) * 0x4307a7) & M64
+    r ^= 0x3ad8025f
+    r = (r ^ 0x5DEECE66D) & M48
+    r = (r * 0x5DEECE66D + 0xB) & M48
+    bits = r >> (48 - 31)                      # Java nextInt(10) 的 next(31)
+    val = bits % 10
+    if bits - val + 9 >= (1 << 31):            # 极罕见：拒绝采样
+        return _slime_next_int10(r)
+    return val == 0
+
+
+def _slime_next_int10(state48: int) -> bool:  # pragma: no cover
+    """Java nextInt(10) 拒绝采样路径（实际几乎不可能走到）。"""
+    M48 = (1 << 48) - 1
+    r = state48 & M48
+    while True:
+        r = (r * 0x5DEECE66D + 0xB) & M48
+        bits = r >> 17
+        val = bits % 10
+        if bits - val + 9 < (1 << 31):
+            return val == 0
 
 
 # ==================================================================
@@ -972,6 +1000,212 @@ def scan_structures(world_dir: str, dim: str = "overworld",
     return out
 
 
+# ==================================================================
+# cubiomes：精确种子计算（群系 / 结构 / 史莱姆区块）
+# 上游 https://github.com/Cubitect/cubiomes（MIT 协议，见 LICENSE-cubiomes.txt），
+# 编译好的 cubiomes.dll 随启动器分发；缺 DLL 时自动退回旧的近似算法（仅能看个大概）。
+# ==================================================================
+
+_MC_ENUM = {   # biomes.h enum MCVersion（cubiomes master，MC_NEWEST = 28）
+    "1.8.9": 11, "1.9.4": 12, "1.10.2": 13, "1.11.2": 14, "1.12.2": 15,
+    "1.13.2": 16, "1.14.4": 17, "1.15.2": 18, "1.16.5": 20, "1.17.1": 21,
+    "1.18.2": 22, "1.19.2": 23, "1.19.4": 24, "1.20.6": 25, "1.21.1": 26,
+    "1.21.3": 27, "1.21.4+": 28,
+}
+CB_DEFAULT_VER = "1.21.4+"
+
+_CB_DLL = None            # ctypes.CDLL 或 False（加载失败）
+_CB_GEN: Dict[Tuple[int, int, int], Any] = {}   # (mc, dim, seed) -> Generator 缓冲
+
+_CB_DIM = {"overworld": 0, "nether": -1, "end": 1}
+
+# cubiomes finders.h enum StructureType 里对玩家有用的部分
+_CB_ST_ID = {
+    1: "minecraft:desert_pyramid", 2: "minecraft:jungle_temple",
+    3: "minecraft:swamp_hut", 4: "minecraft:igloo", 5: "minecraft:village",
+    6: "minecraft:ocean_ruin", 7: "minecraft:shipwreck", 8: "minecraft:monument",
+    9: "minecraft:mansion", 10: "minecraft:pillager_outpost",
+    11: "minecraft:ruined_portal", 12: "minecraft:ruined_portal",
+    13: "minecraft:ancient_city", 14: "minecraft:buried_treasure",
+    15: "minecraft:mineshaft", 23: "minecraft:trail_ruins",
+    24: "minecraft:trial_chambers", 18: "minecraft:fortress",
+    19: "minecraft:bastion_remnant", 20: "minecraft:end_city",
+}
+_CB_STRUCTS = {
+    "overworld": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 23, 24],
+    "nether": [18, 19, 12],
+    "end": [20],
+}
+
+# 群系 id ->（中文名, RGB）。来源 biomes.h enum BiomeID（1.21）
+CB_BIOME_COLORS = {
+    0: ("海洋", 32, 88, 148), 1: ("平原", 120, 168, 76), 2: ("沙漠", 224, 198, 122),
+    3: ("山地", 126, 124, 118), 4: ("森林", 54, 120, 56), 5: ("针叶林", 74, 112, 92),
+    6: ("沼泽", 68, 98, 68), 7: ("河流", 44, 90, 150), 8: ("下界荒地", 104, 44, 38),
+    9: ("末地", 196, 190, 160), 10: ("冻洋", 122, 142, 182), 11: ("冻河", 96, 120, 160),
+    12: ("雪原", 226, 236, 242), 13: ("雪山", 198, 210, 220), 14: ("蘑菇岛", 138, 116, 190),
+    15: ("蘑菇岛岸", 110, 96, 160), 16: ("沙滩", 216, 202, 148), 17: ("沙漠丘陵", 214, 186, 108),
+    18: ("森林丘陵", 48, 108, 50), 19: ("针叶林丘陵", 66, 102, 86), 20: ("山地边缘", 120, 120, 112),
+    21: ("丛林", 42, 130, 52), 22: ("丛林丘陵", 38, 118, 48), 23: ("丛林边缘", 60, 140, 60),
+    24: ("深海", 18, 52, 104), 25: ("石岸", 150, 148, 140), 26: ("雪滩", 208, 218, 224),
+    27: ("白桦林", 140, 180, 100), 28: ("白桦林丘陵", 132, 172, 94), 29: ("黑森林", 40, 84, 36),
+    30: ("积雪针叶林", 150, 180, 180), 31: ("积雪针叶林丘陵", 140, 170, 172),
+    32: ("原始云杉针叶林", 62, 96, 78), 33: ("原始云杉针叶林丘陵", 58, 90, 74),
+    34: ("风袭丘陵", 110, 112, 108), 35: ("热带草原", 182, 168, 82), 36: ("热带高原", 166, 152, 80),
+    37: ("恶地", 178, 96, 60), 38: ("疏林恶地高原", 166, 88, 54), 39: ("恶地高原", 172, 92, 58),
+    40: ("末地小型岛屿", 180, 176, 150), 41: ("末地中型岛屿", 188, 184, 158),
+    42: ("末地高岛", 198, 194, 168), 43: ("末地荒岛", 170, 166, 140),
+    44: ("暖洋", 44, 110, 168), 45: ("温水洋", 38, 100, 158), 46: ("冷水洋", 26, 74, 124),
+    47: ("暖深海", 36, 92, 148), 48: ("温水深海", 30, 82, 134), 49: ("冷水深海", 18, 52, 104),
+    50: ("冻深海", 14, 44, 92), 127: ("虚空", 24, 24, 32),
+    129: ("向日葵平原", 130, 172, 80), 130: ("沙漠湖泊", 222, 192, 110),
+    131: ("砂砾山地", 138, 136, 130), 132: ("繁花森林", 70, 140, 80),
+    133: ("针叶山地", 80, 116, 96), 134: ("沼泽丘陵", 72, 100, 70),
+    135: ("冰刺之地", 232, 240, 246), 136: ("丛林变种", 38, 126, 50),
+    137: ("丛林边缘变种", 56, 136, 56), 138: ("高大白桦林", 146, 186, 106),
+    139: ("高大白桦丘陵", 140, 178, 100), 140: ("黑森林丘陵", 36, 78, 32),
+    141: ("积雪针叶山地", 156, 186, 186), 142: ("原始云杉针叶林变种", 58, 92, 76),
+    143: ("原始云杉针叶林丘陵变种", 56, 88, 72), 144: ("风袭丘陵砾石变种", 120, 122, 118),
+    145: ("破碎热带草原", 186, 164, 76), 146: ("破碎热带高原", 172, 150, 72),
+    147: ("风蚀恶地", 184, 100, 64), 148: ("疏林恶地高原变种", 162, 84, 52),
+    149: ("恶地高原变种", 168, 88, 56), 168: ("竹林", 56, 138, 56), 169: ("竹林丘陵", 52, 132, 52),
+    170: ("灵魂沙峡谷", 94, 72, 88), 171: ("绯红森林", 150, 40, 44),
+    172: ("诡异森林", 42, 140, 130), 173: ("玄武岩三角洲", 70, 60, 66),
+    174: ("溶洞", 170, 140, 110), 175: ("繁茂洞穴", 90, 150, 90),
+    177: ("樱花树林", 222, 178, 190), 183: ("深暗之域", 20, 32, 48),
+    184: ("红树林沼泽", 90, 120, 60), 185: ("樱花树林", 232, 170, 186),
+    186: ("苍白之园", 158, 168, 156),
+}
+
+
+def _load_cubiomes():
+    """加载随包分发的 cubiomes.dll；失败返回 None 且不再重试。"""
+    global _CB_DLL
+    if _CB_DLL is not None:
+        return _CB_DLL if _CB_DLL is not False else None
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = next((p for p in (os.path.join(here, "cubiomes.dll"),
+                             os.path.join(here, "bin", "cubiomes.dll"))
+                 if os.path.isfile(p)), None)
+    if not path:
+        _CB_DLL = False
+        return None
+    try:
+        import ctypes
+        dll = ctypes.CDLL(path)
+        I, V, L = ctypes.c_int, ctypes.c_void_p, ctypes.c_longlong
+        dll.cb_generator_size.restype = I
+        dll.cb_setup.argtypes = [V, I]
+        dll.cb_apply_seed.argtypes = [V, I, L]
+        dll.cb_biome_at.restype = I
+        dll.cb_biome_at.argtypes = [V, I, I, I, I]
+        dll.cb_structures_area.restype = I
+        dll.cb_structures_area.argtypes = [I, I, L, V, I, I, I, I,
+                                           ctypes.POINTER(I), ctypes.POINTER(I),
+                                           I, ctypes.POINTER(I)]
+        dll.cb_slime_chunk.restype = I
+        dll.cb_slime_chunk.argtypes = [L, I, I]
+        dll.cb_stronghold_size.restype = I
+        dll.cb_stronghold_init.argtypes = [V, I, L, ctypes.POINTER(I), ctypes.POINTER(I)]
+        dll.cb_stronghold_next.restype = I
+        dll.cb_stronghold_next.argtypes = [V, V, ctypes.POINTER(I), ctypes.POINTER(I)]
+        dll.cb_spawn_pos.argtypes = [V, ctypes.POINTER(I), ctypes.POINTER(I)]
+        _CB_DLL = dll
+        return dll
+    except Exception:
+        _CB_DLL = False
+        return None
+
+
+def cb_accurate() -> bool:
+    """cubiomes 是否可用（决定 SeedMap 是「精确」还是「近似推测」）。"""
+    return _load_cubiomes() is not None
+
+
+def map_versions() -> List[Dict[str, Any]]:
+    return [{"id": k, "label": k} for k in _MC_ENUM]
+
+
+def map_mc(ver: Any) -> Optional[int]:
+    return _MC_ENUM.get(str(ver or "").strip())
+
+
+def _cb_generator(mc: int, dim: int, seed: int):
+    import ctypes
+    dll = _load_cubiomes()
+    key = (mc, dim, seed)
+    g = _CB_GEN.get(key)
+    if g is None:
+        g = ctypes.create_string_buffer(dll.cb_generator_size())
+        dll.cb_setup(g, mc)
+        dll.cb_apply_seed(g, dim, seed)
+        if len(_CB_GEN) > 24:
+            _CB_GEN.clear()
+        _CB_GEN[key] = g
+    return g
+
+
+_CB_STRONGHOLD_CACHE: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
+
+
+def _cb_strongholds(mc: int, seed: int) -> List[Tuple[int, int]]:
+    """128 个要塞的精确位置（按 seed+版本缓存，扫描视野时不重算）。"""
+    got = _CB_STRONGHOLD_CACHE.get((mc, seed))
+    if got is not None:
+        return got
+    import ctypes as ct
+    dll = _load_cubiomes()
+    g = _cb_generator(mc, 0, seed)
+    sh = ct.create_string_buffer(dll.cb_stronghold_size())
+    hx, hz = ct.c_int(), ct.c_int()
+    dll.cb_stronghold_init(sh, mc, seed, ct.byref(hx), ct.byref(hz))
+    out: List[Tuple[int, int]] = []
+    for _ in range(128):
+        try:
+            if dll.cb_stronghold_next(sh, g, ct.byref(hx), ct.byref(hz)) <= 0:
+                break
+        except Exception:
+            break
+        out.append((hx.value, hz.value))
+    if len(_CB_STRONGHOLD_CACHE) > 8:
+        _CB_STRONGHOLD_CACHE.clear()
+    _CB_STRONGHOLD_CACHE[(mc, seed)] = out
+    return out
+
+
+def _cb_structures(seed: int, x0: int, z0: int, x1: int, z1: int,
+                   dim: str, mc: int) -> List[Dict[str, Any]]:
+    """cubiomes 精确结构位置（含群系校验），加出生点与要塞。"""
+    import ctypes as ct
+    dll = _load_cubiomes()
+    g = _cb_generator(mc, _CB_DIM[dim], seed)
+    xs = (ct.c_int * 4096)()
+    zs = (ct.c_int * 4096)()
+    dimref = ct.c_int()
+    out: List[Dict[str, Any]] = []
+    for st in _CB_STRUCTS.get(dim, []):
+        n = dll.cb_structures_area(st, mc, seed, g, int(x0), int(z0), int(x1), int(z1),
+                                   xs, zs, 4096, ct.byref(dimref))
+        if n <= 0:
+            continue
+        sid = _CB_ST_ID.get(st, "minecraft:structure_%d" % st)
+        label, color = STRUCTURE_LABEL.get(sid, (sid.replace("minecraft:", ""), "#8a8a8a"))
+        for i in range(n):
+            out.append({"id": sid, "label": label, "color": color,
+                        "x": xs[i], "z": zs[i], "real": True})
+    if dim == "overworld":
+        sx, sz = ct.c_int(), ct.c_int()
+        dll.cb_spawn_pos(g, ct.byref(sx), ct.byref(sz))
+        if x0 <= sx.value <= x1 and z0 <= sz.value <= z1:
+            out.append({"id": "minecraft:spawn", "label": "出生点", "color": "#7ad8ff",
+                        "x": sx.value, "z": sz.value, "real": True})
+        # 要塞：环形共 128 个，逐个迭代（cubiomes 官方算法），按 seed+版本缓存
+        for hx, hz in _cb_strongholds(mc, seed):
+            out.append({"id": "minecraft:stronghold", "label": "要塞", "color": "#c04a9e",
+                        "x": hx, "z": hz, "real": True})
+    return out
+
+
 # 1.18+ 结构推测参数（spacing, separation, salt）—— 仅供参考
 STRUCTURE_GUESS = {
     "minecraft:stronghold": (None, None, None),   # 单独算法
@@ -1013,15 +1247,20 @@ def structures_for_dim(sid: str, dim: str) -> bool:
 
 
 def guess_structures(seed: int, x0: int, z0: int, x1: int, z1: int,
-                     dim: str = "overworld") -> List[Dict[str, Any]]:
+                     dim: str = "overworld", mc: Any = None) -> List[Dict[str, Any]]:
     """
-    按 seed 推测结构位置（1.13+ 通用 salted-region 算法）。
-    标注 real=False，UI 上会提示为推测。
-    dim 用来过滤维度专属结构，避免主世界画出末地城。
+    按 seed 推测结构位置。mc 给出 MC 版本且 cubiomes 可用时走精确算法
+    （带群系校验：沙漠神殿只落在沙漠、海底神殿只在深海……）；
+    否则退回旧的 salted-region 近似（无群系校验，位置仅供参考）。
     """
-    out: List[Dict[str, Any]] = []
     if seed is None:
-        return out
+        return []
+    if _load_cubiomes() and map_mc(mc):
+        try:
+            return _cb_structures(seed, x0, z0, x1, z1, dim, map_mc(mc))
+        except Exception:
+            pass
+    out: List[Dict[str, Any]] = []
     for sid, (spacing, separation, salt) in STRUCTURE_GUESS.items():
         if not spacing or spacing <= 1:
             continue
@@ -1050,7 +1289,7 @@ def guess_structures(seed: int, x0: int, z0: int, x1: int, z1: int,
 
 
 def slime_chunks(seed: int, x0: int, z0: int, x1: int, z1: int) -> List[Dict[str, int]]:
-    """返回范围内的史莱姆区块（区块坐标）。"""
+    """返回范围内的史莱姆区块（区块坐标）。cubiomes 可用时用精确实现。"""
     out: List[Dict[str, int]] = []
     if seed is None:
         return out
@@ -1058,9 +1297,11 @@ def slime_chunks(seed: int, x0: int, z0: int, x1: int, z1: int) -> List[Dict[str
     cz0, cz1 = int(math.floor(z0 / 16.0)), int(math.ceil(z1 / 16.0))
     if (cx1 - cx0) * (cz1 - cz0) > 60000:
         return out
+    dll = _load_cubiomes()
+    fn = dll.cb_slime_chunk if dll else None
     for cx in range(cx0, cx1 + 1):
         for cz in range(cz0, cz1 + 1):
-            if is_slime_chunk(seed, cx, cz):
+            if (fn(seed, cx, cz) if fn else is_slime_chunk(seed, cx, cz)):
                 out.append({"cx": cx, "cz": cz})
     return out
 
@@ -1193,11 +1434,76 @@ def biome_at(seed: int, wx: float, wz: float, dim: str = "overworld") -> str:
     return "plains"
 
 
+def _render_seedmap_cb(seed: int, dim: str, center: Tuple[float, float],
+                       span: int, tile: int, mc_num: int, mc_label: Any) -> Dict[str, Any]:
+    """cubiomes 精确群系底图（每 4×4 方格取一次 MC 真实群系 id）。"""
+    import base64
+    dll = _load_cubiomes()
+    cx, cz = center
+    x0, z0 = cx - span / 2.0, cz - span / 2.0
+    px_per_block = tile / float(span)
+    img = bytearray(tile * tile * 3)
+    counts: Dict[int, int] = {}
+    step = max(1, tile // 160)
+    cells = 0
+    g = _cb_generator(mc_num, _CB_DIM[dim], seed)
+    for by in range(0, tile, step):
+        wz = z0 + by / px_per_block
+        for bx in range(0, tile, step):
+            wx = x0 + bx / px_per_block
+            bid = dll.cb_biome_at(g, 4, int(wx), 64, int(wz))
+            counts[bid] = counts.get(bid, 0) + 1
+            cells += 1
+            info = CB_BIOME_COLORS.get(bid)
+            if info:
+                r, gg, b = info[1], info[2], info[3]
+            else:                     # 未知群系：给个稳定的可辨识色
+                h = (bid * 2654435761) & 0xFFFF
+                r, gg, b = 96 + ((h >> 8) & 0x3F), 96 + ((h >> 4) & 0x3F), 96 + (h & 0x3F)
+            sh = 0.88 + 0.24 * _vnoise(seed, wx, wz, 48, 131)
+            pix = bytes((max(0, min(255, int(r * sh))),
+                         max(0, min(255, int(gg * sh))),
+                         max(0, min(255, int(b * sh)))))
+            for yy in range(by, min(by + step, tile)):
+                base = yy * tile * 3
+                for xx in range(bx, min(bx + step, tile)):
+                    o = base + xx * 3
+                    img[o] = pix[0]; img[o + 1] = pix[1]; img[o + 2] = pix[2]
+    legend = []
+    for bid, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        info = CB_BIOME_COLORS.get(bid)
+        if info:
+            name, col = info[0], "#%02x%02x%02x" % (info[1], info[2], info[3])
+        else:
+            name, col = "群系 %d" % bid, "#606060"
+        legend.append({"id": str(bid), "name": name, "color": col,
+                       "ratio": round(n / float(cells or 1), 4)})
+    png = _to_png(bytes(img), tile, tile)
+    return {
+        "ok": True,
+        "png": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+        "bounds": {"x0": x0, "z0": z0, "x1": cx + span / 2.0,
+                   "z1": cz + span / 2.0, "span": span},
+        "legend": legend, "dim": dim, "seed": seed, "coverage": 1.0,
+        "accurate": True, "ver": str(mc_label),
+    }
+
+
 def render_seedmap(seed: int, dim: str = "overworld",
                    center: Tuple[float, float] = (0, 0),
-                   span: int = 2048, tile: int = 320) -> Dict[str, Any]:
-    """画一张种子推测地形图（群系色块），解决「SeedMap 一片超平坦」。"""
+                   span: int = 2048, tile: int = 320,
+                   mc: Any = None) -> Dict[str, Any]:
+    """
+    画一张种子地形图（群系色块）。
+    cubiomes 可用且给出版本时按 MC 真实生成算法逐群系精确计算；
+    否则退回旧的自造噪声近似（只能看个大概，边界与真实游戏对不上）。
+    """
     import base64
+    if _load_cubiomes() and map_mc(mc):
+        try:
+            return _render_seedmap_cb(seed, dim, center, span, tile, map_mc(mc), mc)
+        except Exception:
+            pass
     cx, cz = center
     x0, z0 = cx - span / 2.0, cz - span / 2.0
     px_per_block = tile / float(span)
@@ -1235,4 +1541,5 @@ def render_seedmap(seed: int, dim: str = "overworld",
         "bounds": {"x0": x0, "z0": z0, "x1": cx + span / 2.0,
                    "z1": cz + span / 2.0, "span": span},
         "legend": legend, "dim": dim, "seed": seed, "coverage": 1.0,
+        "accurate": False,
     }

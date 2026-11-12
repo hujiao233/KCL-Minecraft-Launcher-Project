@@ -2016,9 +2016,10 @@ def api_world_structures():
 
     real = world.scan_structures(d, dim) if d else []
     guessed = []
+    ver = request.args.get("ver", "").strip()
     if seed is not None:
         have = set((s["id"], s["x"] // 16, s["z"] // 16) for s in real)
-        for g in world.guess_structures(seed, x0, z0, x1, z1, dim):
+        for g in world.guess_structures(seed, x0, z0, x1, z1, dim, mc=ver):
             if (g["id"], g["x"] // 16, g["z"] // 16) in have:
                 continue
             guessed.append(g)
@@ -2027,6 +2028,7 @@ def api_world_structures():
               if seed is not None and dim == "overworld" else [])
     return ok({"seed": seed, "dim": dim, "structures": real + guessed,
                "realCount": len(real), "guessCount": len(guessed),
+               "accurate": bool(world.cb_accurate() and world.map_mc(ver)),
                "slime": slimes, "bounds": {"x0": x0, "z0": z0, "x1": x1, "z1": z1}})
 
 
@@ -2047,9 +2049,18 @@ def api_world_seedmap():
     except Exception:
         return err("参数不正确", 200)
     try:
-        return ok(world.render_seedmap(seed, dim, (cx, cz), span, tile))
+        return ok(world.render_seedmap(seed, dim, (cx, cz), span, tile,
+                                       mc=request.args.get("ver", "").strip()))
     except Exception as e:  # noqa: BLE001
         return err("绘制失败：" + str(e), 200)
+
+
+@app.get("/api/map/versions")
+def api_map_versions():
+    """SeedMap 支持的 MC 版本列表（不同版本种子/群系算法不同）。"""
+    return ok({"versions": world.map_versions(),
+               "default": world.CB_DEFAULT_VER,
+               "accurate": world.cb_accurate()})
 
 
 @app.get("/api/world/marks")
