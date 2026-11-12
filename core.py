@@ -98,7 +98,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "uiScale": "auto",            # auto = 按 1020×680 等比缩放；off = 自由拉伸
     # ---------- 启动行为 ----------
     "autoMemory": True,           # 按机器内存自动分配
+    "autoMemGc": True,            # 自动分配时，运行中把多余的空闲堆还给系统
     "autoServer": False,          # 启动游戏时同时启动本地服务端
+    # ---------- 启动预设（版本 + 用户 + 内存 的组合） ----------
+    "launchProfiles": [],         # [{id, name, version, account, maxMemory, autoMemory, javaPath, jvmArgs}]
     "updateCheck": True,          # 启动时检查更新（非强制）
     "updateUrl": "",
     "lastUpdate": {},
@@ -223,6 +226,17 @@ def _mem_reserve(total: int) -> int:
     return 4096
 
 
+def slider_max_mb(total: int | None = None) -> int:
+    """
+    内存滑块允许的上限（MB）：物理内存扣掉系统预留。
+    保底 8 GB（大型整合包常常要 6~10 GB），最高 64 GB。
+    """
+    total = int(total or total_system_memory_mb())
+    top = total - _mem_reserve(total) - 512
+    top = max(8192, min(65536, top))
+    return int(top // 512 * 512)
+
+
 def memory_advice(cfg: Dict[str, Any] | None = None, vid: str = "") -> Dict[str, Any]:
     """
     实时内存体检：结合「物理内存总量」和「此刻真正可用的内存」给出建议值。
@@ -234,9 +248,10 @@ def memory_advice(cfg: Dict[str, Any] | None = None, vid: str = "") -> Dict[str,
 
     base = _mem_base_by_total(total)
     reserve = _mem_reserve(total)
+    slider_max = slider_max_mb(total)
     cap = _mem_round(avail - reserve)          # 此刻最多能给游戏多少
     recommended = _mem_round(min(base, cap))
-    recommended = max(1024, min(recommended, 16384))
+    recommended = max(1024, min(recommended, slider_max))
 
     if vid:
         st = version_settings(vid, cfg)
@@ -288,7 +303,7 @@ def memory_advice(cfg: Dict[str, Any] | None = None, vid: str = "") -> Dict[str,
 
     return {
         "total": total, "available": avail, "used": info["used"], "load": load_pct,
-        "reserve": reserve, "base": base, "cap": cap,
+        "reserve": reserve, "base": base, "cap": cap, "sliderMax": slider_max,
         "recommended": recommended, "current": current,
         "auto": cfg.get("autoMemory", True) is not False,
         "level": level, "reasons": reasons, "version": vid or "",

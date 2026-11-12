@@ -442,7 +442,7 @@ def api_set_config():
                "authInjector", "resourceSource", "resourceMirror", "curseforgeKey",
                "language", "syncGameLang", "themePreset", "themeAccent",
                "titleAlign", "themePresets", "themeDark",
-               "autoMemory", "autoServer", "updateCheck", "updateUrl",
+               "autoMemory", "autoMemGc", "autoServer", "updateCheck", "updateUrl",
                "offlineMode", "siteUrl", "uiLayout"}
     clean = {k: v for k, v in patch.items() if k in allowed}
     if "maxMemory" in clean:
@@ -1637,6 +1637,92 @@ def api_task_remove(task_id):
 
 # ---------------- 启动 ----------------
 
+@app.get("/api/instances")
+def api_instances():
+    """所有游戏标签 + 本机内存状态（1.5 秒轮询一次）。"""
+    try:
+        return ok(game.instances_snapshot())
+    except Exception as e:  # noqa: BLE001
+        return err("读取实例失败：%s" % e)
+
+
+@app.post("/api/instances/<iid>/stop")
+def api_instance_stop(iid: str):
+    r = game.stop_instance(iid)
+    return ok(r) if r.get("ok") else err(str(r.get("msg") or "结束失败"))
+
+
+@app.post("/api/instances/<iid>/close")
+def api_instance_close(iid: str):
+    r = game.close_instance(iid)
+    return ok(r) if r.get("ok") else err(str(r.get("msg") or "关闭失败"))
+
+
+@app.post("/api/instances/<iid>/rename")
+def api_instance_rename(iid: str):
+    body = request.get_json(force=True, silent=True) or {}
+    r = game.rename_instance(iid, str(body.get("name") or ""))
+    return ok(r) if r.get("ok") else err(str(r.get("msg") or "重命名失败"))
+
+
+@app.post("/api/instances/<iid>/memory")
+def api_instance_memory(iid: str):
+    body = request.get_json(force=True, silent=True) or {}
+    auto = body.get("auto")
+    mb = body.get("maxMemory")
+    r = game.set_instance_memory(
+        iid,
+        None if auto is None else bool(auto),
+        None if mb in (None, "") else int(mb))
+    return ok(r) if r.get("ok") else err(str(r.get("msg") or "设置失败"))
+
+
+@app.get("/api/profiles")
+def api_profiles():
+    return ok((core.load().get("launchProfiles") or []))
+
+
+@app.post("/api/profiles")
+def api_profile_save():
+    """新增 / 更新启动预设（body 带 id 就是更新）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    name = str(body.get("name") or "").strip()[:30]
+    vid = str(body.get("version") or "").strip()
+    if not name:
+        return err("给预设起个名字")
+    if not vid:
+        return err("预设必须包含一个版本")
+    item = {
+        "id": str(body.get("id") or "").strip() or ("pf" + os.urandom(4).hex()),
+        "name": name,
+        "version": vid,
+        "account": str(body.get("account") or "").strip(),
+        "maxMemory": int(body.get("maxMemory") or 0) or None,
+        "autoMemory": bool(body.get("autoMemory", True)),
+        "javaPath": str(body.get("javaPath") or ""),
+        "jvmArgs": str(body.get("jvmArgs") or ""),
+        "updatedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    cfg = core.load()
+    lst = [p for p in (cfg.get("launchProfiles") or []) if p.get("id") != item["id"]]
+    lst.append(item)
+    cfg["launchProfiles"] = lst
+    core.save(cfg)
+    return ok(item)
+
+
+@app.post("/api/profiles/delete")
+def api_profile_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    pid = str(body.get("id") or "")
+    cfg = core.load()
+    before = len(cfg.get("launchProfiles") or [])
+    cfg["launchProfiles"] = [p for p in (cfg.get("launchProfiles") or [])
+                             if p.get("id") != pid]
+    core.save(cfg)
+    return ok({"removed": before - len(cfg["launchProfiles"])})
+
+
 @app.post("/api/launch")
 def api_launch():
     body = request.get_json(force=True, silent=True) or {}
@@ -1648,6 +1734,9 @@ def api_launch():
         "height": body.get("height"),
         "fullscreen": body.get("fullscreen"),
         "maxMemory": body.get("maxMemory"),
+        "autoMem": body.get("autoMem"),
+        "name": body.get("name"),
+        "profile": body.get("profile"),
         "javaPath": body.get("javaPath"),
         "jvmArgs": body.get("jvmArgs"),
     }

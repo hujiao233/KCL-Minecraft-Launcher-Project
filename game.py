@@ -12,6 +12,7 @@ import re
 import subprocess
 import threading
 import time
+import ctypes
 from typing import Any, Dict, List, Optional, Tuple
 
 import core
@@ -21,10 +22,14 @@ TIME = "%Y-%m-%d %H:%M:%S"
 
 
 class GameProcess:
-    """一次游戏运行的记录。"""
+    """一次游戏运行的记录（一个实例 = 一个标签页）。"""
 
     def __init__(self, pid: int, version_id: str, account: str, proc: subprocess.Popen,
-                 logfile: str):
+                 logfile: str, iid: str = "", name: str = "", mem_mb: int = 0,
+                 mem_auto: bool = True, mem_source: str = "", profile: str = ""):
+        self.id = iid or ("gp" + os.urandom(4).hex())
+        self.name = name or ""
+        self.custom_name = ""          # 用户手动改过的名字（优先级最高）
         self.pid = pid
         self.version_id = version_id
         self.account = account
@@ -38,6 +43,20 @@ class GameProcess:
         self.command: List[str] = []
         self.window_ready = False      # 游戏窗口是否已经出现
         self.crashed = False           # 是否已判定为崩溃退出
+        self.java_path = ""
+        self.profile = profile         # 来自哪个启动预设
+        # ---- 内存（每个实例独立）----
+        self.mem_mb = int(mem_mb or 0)         # 启动时给 JVM 的 -Xmx
+        self.mem_auto = bool(mem_auto)         # 这个实例是否自动分配
+        self.mem_source = mem_source or "手动设置"
+        self.rss_mb = 0                # 当前实际占用（工作集）
+        self.peak_mb = 0               # 峰值占用
+        self.target_mb = int(mem_mb or 0)      # 自动模式下持续收敛的目标
+        self.cpu = 0.0                 # 最近一次采样到的 CPU 占用（%）
+        self._last_cpu_t = 0.0
+        self._last_cpu_s = 0.0
+        self._last_gc = 0.0
+        self.auto_note = ""
 
     @property
     def alive(self) -> bool:
@@ -45,26 +64,261 @@ class GameProcess:
             return False
         return self.proc.poll() is None
 
+    @property
+    def display_name(self) -> str:
+        if self.custom_name:
+            return self.custom_name
+        if self.name:
+            return self.name
+        return "%s · %s" % (self.version_id, self.account or "离线")
+
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "pid": self.pid,
+            "name": self.display_name,
             "version": self.version_id,
             "account": self.account,
+            "profile": self.profile,
             "alive": self.alive,
             "exitCode": self.exit_code,
             "windowReady": self.window_ready,
             "crashed": self.crashed,
             "startedAt": time.strftime(TIME, time.localtime(self.started_at)),
+            "uptime": int(max(0, time.time() - self.started_at)),
             "logfile": self.logfile,
             "log": list(self.tail),
+            "memory": {
+                "limit": self.mem_mb,
+                "auto": self.mem_auto,
+                "source": self.mem_source,
+                "used": self.rss_mb,
+                "peak": self.peak_mb,
+                "target": self.target_mb,
+                "note": self.auto_note,
+                "cpu": round(self.cpu, 1),
+            },
         }
 
 
-_current: Optional[GameProcess] = None
+# ---------------- 实例表（支持多开） ----------------
+
+_instances: Dict[str, GameProcess] = {}
+_inst_order: List[str] = []
+_inst_lock = threading.Lock()
 
 
 def current_process() -> Optional[GameProcess]:
-    return _current
+    """兼容老接口：返回最近启动的那个实例。"""
+    with _inst_lock:
+        for iid in reversed(_inst_order):
+            gp = _instances.get(iid)
+            if gp:
+                return gp
+    return None
+
+
+def list_instances() -> List[GameProcess]:
+    with _inst_lock:
+        return [g for g in (_instances.get(i) for i in _inst_order) if g]
+
+
+def get_instance(iid: str) -> Optional[GameProcess]:
+    with _inst_lock:
+        return _instances.get(iid)
+
+
+def _register(gp: GameProcess) -> None:
+    with _inst_lock:
+        _instances[gp.id] = gp
+        _inst_order.append(gp.id)
+
+
+def _forget(iid: str) -> None:
+    with _inst_lock:
+        _instances.pop(iid, None)
+        if iid in _inst_order:
+            _inst_order.remove(iid)
+
+
+def rename_instance(iid: str, name: str) -> Dict[str, Any]:
+    gp = get_instance(iid)
+    if not gp:
+        return {"ok": False, "msg": "没有这个实例"}
+    gp.custom_name = (name or "").strip()[:40]
+    return {"ok": True, "name": gp.display_name}
+
+
+# ---------------- 进程内存 / CPU 采样 ----------------
+
+class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+    _fields_ = [
+        ("cb", ctypes.c_ulong),
+        ("PageFaultCount", ctypes.c_ulong),
+        ("PeakWorkingSetSize", ctypes.c_size_t),
+        ("WorkingSetSize", ctypes.c_size_t),
+        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+        ("PagefileUsage", ctypes.c_size_t),
+        ("PeakPagefileUsage", ctypes.c_size_t),
+    ]
+
+
+_PROC_QUERY_LIMITED = 0x1000
+_PROC_VM_READ = 0x0010
+
+
+def _win_proc_mem_mb(pid: int) -> Tuple[int, int]:
+    """返回 (当前工作集 MB, 峰值工作集 MB)；非 Windows 或失败返回 (0, 0)。"""
+    if os.name != "nt":
+        return 0, 0
+    h = None
+    try:
+        k32 = ctypes.windll.kernel32
+        psapi = ctypes.windll.psapi
+        h = k32.OpenProcess(_PROC_QUERY_LIMITED | _PROC_VM_READ, False, int(pid))
+        if not h:
+            return 0, 0
+        c = _PROCESS_MEMORY_COUNTERS()
+        c.cb = ctypes.sizeof(_PROCESS_MEMORY_COUNTERS)
+        if not psapi.GetProcessMemoryInfo(h, ctypes.byref(c), c.cb):
+            return 0, 0
+        return (int(c.WorkingSetSize / 1048576),
+                int(c.PeakWorkingSetSize / 1048576))
+    except Exception:
+        return 0, 0
+    finally:
+        if h:
+            try:
+                ctypes.windll.kernel32.CloseHandle(h)
+            except Exception:
+                pass
+
+
+def _win_proc_cpu_seconds(pid: int) -> float:
+    """进程累计 CPU 时间（秒），用来算实时 CPU 占用。"""
+    if os.name != "nt":
+        return 0.0
+    h = None
+    try:
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(_PROC_QUERY_LIMITED, False, int(pid))
+
+        class FILETIME(ctypes.Structure):
+            _fields_ = [("low", ctypes.c_ulong), ("high", ctypes.c_ulong)]
+
+        if not h:
+            return 0.0
+        c, e, k = FILETIME(), FILETIME(), FILETIME()
+        u, s = FILETIME(), FILETIME()
+        if not k32.GetProcessTimes(h, ctypes.byref(c), ctypes.byref(e),
+                                   ctypes.byref(k), ctypes.byref(u)):
+            return 0.0
+        to_int = lambda f: (f.high << 32) | f.low     # noqa: E731
+        return (to_int(k) + to_int(u)) / 1e7
+    except Exception:
+        return 0.0
+    finally:
+        if h:
+            try:
+                ctypes.windll.kernel32.CloseHandle(h)
+            except Exception:
+                pass
+
+
+def _jcmd_path(gp: GameProcess) -> str:
+    base = os.path.dirname(gp.java_path or "")
+    exe = os.path.join(base, "jcmd.exe")
+    return exe if os.path.isfile(exe) else ""
+
+
+def _auto_tune(gp: GameProcess, cfg: Dict[str, Any]) -> None:
+    """
+    自动内存的「运行中」部分。
+
+    JVM 的 -Xmx 在启动后不能改，所以这里做两件真正有用的事：
+      1. 按当前可用内存、同时运行的实例数，持续算出每个进程应占的目标值；
+      2. 目标明显低于实际占用 + 进程空闲时，让它把空闲堆还给系统（jcmd GC.run）。
+    这样开着的游戏越多、系统越紧张，每个进程占的物理内存会自己收敛。
+    """
+    if not gp.mem_auto:
+        gp.target_mb = gp.mem_mb
+        return
+    try:
+        info = core.system_memory_info()
+        alive = [g for g in list_instances() if g.alive]
+        n = max(1, len(alive))
+        # 可给游戏的总量 = 此刻空闲 + 各实例已经占着的（重新均分）
+        pool = info["available"] + sum(g.rss_mb for g in alive)
+        pool = max(1024, pool - core._mem_reserve(info["total"]))   # noqa: SLF001
+        target = int(min(gp.mem_mb, max(1024, pool // n)))
+        target = int(target // 256 * 256)
+        gp.target_mb = target
+        gp.auto_note = "%d 个实例共享 %s，建议每个 %s" % (
+            n, _mb_text(info["available"]), _mb_text(target))
+        # 只在真的「虚胖」且闲的时候归还内存，避免影响游戏
+        if (cfg.get("autoMemGc", True) and gp.rss_mb > max(1536, target * 1.35)
+                and gp.cpu < 12 and time.time() - gp._last_gc > 120 and gp.window_ready):
+            jc = _jcmd_path(gp)
+            if jc:
+                gp._last_gc = time.time()
+                try:
+                    subprocess.run([jc, str(gp.pid), "GC.run"], timeout=8,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def _mb_text(mb: int) -> str:
+    mb = int(mb or 0)
+    if mb >= 1024:
+        g = mb / 1024.0
+        return ("%.1f GB" % g) if g < 10 else ("%d GB" % round(g))
+    return "%d MB" % mb
+
+
+def _monitor() -> None:
+    """每秒采样所有实例的占用；每 15 秒做一次自动内存收敛。"""
+    last_tune = 0.0
+    while True:
+        try:
+            cfg = core.load()
+            now = time.time()
+            for gp in list_instances():
+                if not gp.alive:
+                    continue
+                used, peak = _win_proc_mem_mb(gp.pid)
+                if used:
+                    gp.rss_mb = used
+                    gp.peak_mb = max(gp.peak_mb, peak or used)
+                cs = _win_proc_cpu_seconds(gp.pid)
+                if gp._last_cpu_t:
+                    dt = max(0.2, now - gp._last_cpu_t)
+                    gp.cpu = max(0.0, min(999.0, (cs - gp._last_cpu_s) / dt * 100.0))
+                gp._last_cpu_t, gp._last_cpu_s = now, cs
+                if now - last_tune > 15:
+                    _auto_tune(gp, cfg)
+            if now - last_tune > 15:
+                last_tune = now
+        except Exception:
+            pass
+        time.sleep(1.0)
+
+
+_monitor_started = False
+
+
+def _ensure_monitor() -> None:
+    global _monitor_started
+    if _monitor_started:
+        return
+    _monitor_started = True
+    threading.Thread(target=_monitor, daemon=True, name="kcl-mem-monitor").start()
 
 
 # ---------------- 完整性检查 ----------------
@@ -116,7 +370,15 @@ def missing_files(vid: str, cfg: Dict[str, Any] | None = None,
 
 
 def check_ready(vid: str, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    missing, warns = missing_files(vid, cfg)
+    try:
+        missing, warns = missing_files(vid, cfg)
+    except Exception as e:  # noqa: BLE001
+        # 版本 json/jar 丢失、或联网补 json 也失败（如 NeoForge/Forge 这类
+        # 非 Mojang 官方版本号）时，给一句人话，而不是让 404 堆栈炸出去
+        return {"ready": False, "missing": [], "warnings": [], "broken": True,
+                "msg": f"版本 {vid} 的信息文件读取失败（{type(e).__name__}）。"
+                       f"可能是版本已损坏、被移动，或版本目录里缺少对应的 .json 文件；"
+                       f"请到「版本」页重装该版本。"}
     return {"ready": len(missing) == 0, "missing": missing[:50], "warnings": warns}
 
 
@@ -179,7 +441,15 @@ def precheck(vid: str, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
     try:
         vj = vmod.resolve_version(vid)
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "msg": f"版本 {vid} 的 JSON 读取失败：{e}"}
+        # 版本 JSON 丢了，或者不是 Mojang 官方版本号（NeoForge/Forge 等）
+        # 导致联网补也补不到：这时候给用户一条能操作的建议，别甩 404 上去
+        why = "联网也拿不到这个版本的 JSON"
+        if "404" in str(e):
+            why = "这个版本不是 Mojang 官方版本号，联网补不到"
+        return {"ok": False, "needInstall": True,
+                "msg": f"版本「{vid}」的信息文件缺失（{why}）。"
+                       f"通常是 versions/{vid}/ 下的 .json 被删掉或移动了，"
+                       f"请到「版本」页重新安装这个版本。"}
 
     warns: List[str] = []
     try:
@@ -468,19 +738,25 @@ def build_command(vid: str, account: Dict[str, str], cfg: Dict[str, Any],
     if custom_mem is not None:
         custom_mem = int(custom_mem)
     mem_info = core.memory_advice(cfg, vid)
-    if opts.get("maxMemory"):
-        mem = int(opts["maxMemory"])
-        mem_src = "本次指定"
-    elif custom_mem:
-        mem = custom_mem
-        mem_src = "版本设置"
-    elif cfg.get("autoMemory", True) is False:
-        mem = int(st.get("maxMemory") or 4096)
-        mem_src = "手动设置"
-    else:
-        mem = int(mem_info.get("recommended") or core.auto_memory_mb(cfg))
+    auto_flag = opts.get("autoMem")
+    if auto_flag is None:
+        # 没显式指定就跟随全局设置（版本单独改过内存的，视为手动）
+        auto_flag = (cfg.get("autoMemory", True) is not False) and custom_mem is None
+    auto_flag = bool(auto_flag)
+    if auto_flag:
+        rec = int(mem_info.get("recommended") or core.auto_memory_mb(cfg))
+        cap = int(opts.get("maxMemory") or 0)
+        mem = min(rec, cap) if cap else rec
         mem_src = "实时自动"
-    mem = max(1024, min(int(mem), 16384))
+    else:
+        mem = int(opts.get("maxMemory") or custom_mem or st.get("maxMemory")
+                  or cfg.get("maxMemory") or 4096)
+        mem_src = "本次指定" if opts.get("maxMemory") else (
+            "版本设置" if custom_mem else "手动设置")
+    try:
+        mem = max(1024, min(int(mem), core.slider_max_mb()))
+    except Exception:
+        mem = 4096
 
     asset_index_id = (vj.get("assetIndex") or {}).get("id") or vj.get("assets") or ""
 
@@ -633,6 +909,7 @@ def build_command(vid: str, account: Dict[str, str], cfg: Dict[str, Any],
         "javaNotes": req.get("notes") or [],
         "memory": mem,
         "memSource": mem_src,
+        "memAuto": bool(auto_flag),
         "memInfo": {
             "total": mem_info.get("total"), "available": mem_info.get("available"),
             "load": mem_info.get("load"), "recommended": mem_info.get("recommended"),
@@ -691,11 +968,7 @@ def _reader(proc: subprocess.Popen, gp: GameProcess, f):
 
 def launch(vid: str, account_name: str = "", cfg: Dict[str, Any] | None = None,
            opts: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    global _current
     cfg = cfg or core.load()
-
-    if _current and _current.alive:
-        return {"ok": False, "msg": f"游戏已在运行中（PID {_current.pid}）"}
 
     # 预检查（借鉴 PCL 的 McLaunchPrecheck）：路径里的 ! 和 ; 会直接破坏 classpath
     pre = precheck(vid, cfg)
@@ -724,6 +997,8 @@ def launch(vid: str, account_name: str = "", cfg: Dict[str, Any] | None = None,
             pass  # 网络不通时用现有令牌尽力尝试
 
     ready = check_ready(vid, cfg)
+    if ready.get("broken"):
+        return {"ok": False, "msg": ready.get("msg", "版本文件损坏"), "needInstall": True}
     if not ready["ready"]:
         # PCL 的「补全文件」步骤：少量文件缺失时先补齐再启动，而不是直接拒绝
         if opts.get("autoFix", True) and len(ready["missing"]) <= 40:
@@ -787,9 +1062,16 @@ def launch(vid: str, account_name: str = "", cfg: Dict[str, Any] | None = None,
             logf.close()
         return {"ok": False, "msg": f"启动失败：{e}", "cmd": argv[:2]}
 
-    gp = GameProcess(proc.pid, vid, account.get("name", ""), proc, logfile)
+    gp = GameProcess(proc.pid, vid, account.get("name", ""), proc, logfile,
+                     name=str(opts.get("name") or "").strip(),
+                     mem_mb=int(meta.get("memory") or 0),
+                     mem_auto=bool(meta.get("memAuto", True)),
+                     mem_source=str(meta.get("memSource") or ""),
+                     profile=str(opts.get("profile") or ""))
+    gp.java_path = meta.get("java") or ""
     gp.command = argv
-    _current = gp
+    _register(gp)
+    _ensure_monitor()
 
     if logf and proc.stdout:
         t = threading.Thread(target=_reader, args=(proc, gp, logf), daemon=True)
@@ -840,8 +1122,8 @@ def launch(vid: str, account_name: str = "", cfg: Dict[str, Any] | None = None,
     gp.crashed = False
     threading.Thread(target=_watch, daemon=True).start()
 
-    return {"ok": True, "pid": proc.pid, "meta": meta, "logfile": logfile,
-            "warns": warns}
+    return {"ok": True, "id": gp.id, "name": gp.display_name, "pid": proc.pid,
+            "meta": meta, "logfile": logfile, "warns": warns}
 
 
 # ---------------- 游戏语言同步 ----------------
@@ -1001,15 +1283,90 @@ def analyze_crash(log_text: str, cfg: Dict[str, Any] | None = None) -> Dict[str,
     return {"ok": True, "items": hits, "count": len(hits)}
 
 
-def stop_game() -> Dict[str, Any]:
-    global _current
-    if not _current or not _current.alive:
-        return {"ok": False, "msg": "当前没有正在运行的游戏"}
+def stop_instance(iid: str = "") -> Dict[str, Any]:
+    """结束某个实例的游戏进程；不传 id 就结束最近启动的那个。"""
+    gp = get_instance(iid) if iid else current_process()
+    if not gp:
+        return {"ok": False, "msg": "没有这个实例"}
+    if not gp.alive:
+        return {"ok": True, "msg": "这个实例已经停止了", "id": gp.id}
     try:
-        _current.proc.terminate()
-        time.sleep(1.0)
-        if _current.proc.poll() is None:
-            _current.proc.kill()
-        return {"ok": True, "msg": "已结束游戏进程"}
+        gp.proc.terminate()
+        for _ in range(20):
+            if gp.proc.poll() is not None:
+                break
+            time.sleep(0.15)
+        if gp.proc.poll() is None:
+            gp.proc.kill()
+        return {"ok": True, "msg": "已结束游戏进程", "id": gp.id}
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "msg": str(e)}
+        return {"ok": False, "msg": str(e), "id": gp.id}
+
+
+def stop_game() -> Dict[str, Any]:
+    return stop_instance("")
+
+
+def close_instance(iid: str) -> Dict[str, Any]:
+    """关闭标签页：进程还活着就先结束，再从实例表里移除。"""
+    gp = get_instance(iid)
+    if not gp:
+        return {"ok": True, "msg": "标签已消失"}
+    if gp.alive:
+        try:
+            gp.proc.terminate()
+            for _ in range(20):
+                if gp.proc.poll() is not None:
+                    break
+                time.sleep(0.15)
+            if gp.proc.poll() is None:
+                gp.proc.kill()
+        except Exception:
+            pass
+    _forget(iid)
+    return {"ok": True, "msg": "标签已关闭"}
+
+
+def set_instance_memory(iid: str, auto: bool | None = None,
+                        mb: int | None = None) -> Dict[str, Any]:
+    """
+    调整某个实例的内存设置。
+
+    注意：正在运行的 JVM 改不了 -Xmx，所以这里改的是「这个实例之后的自动分配策略」，
+    立即生效的是目标值与空闲堆归还；新的上限在下次启动时使用。
+    """
+    gp = get_instance(iid)
+    if not gp:
+        return {"ok": False, "msg": "没有这个实例"}
+    if auto is not None:
+        gp.mem_auto = bool(auto)
+        gp.mem_source = "实时自动" if gp.mem_auto else "手动设置"
+    if mb:
+        gp.mem_mb = max(1024, min(int(mb), core.slider_max_mb()))
+        gp.target_mb = gp.mem_mb
+        if not gp.mem_auto:
+            gp.mem_source = "手动设置"
+    return {"ok": True, "memory": {
+        "limit": gp.mem_mb, "auto": gp.mem_auto, "source": gp.mem_source,
+        "used": gp.rss_mb, "peak": gp.peak_mb, "target": gp.target_mb,
+        "note": gp.auto_note, "cpu": round(gp.cpu, 1),
+    }}
+
+
+def instances_snapshot() -> Dict[str, Any]:
+    """给界面用的完整快照：所有标签 + 本机内存状态。"""
+    info = core.system_memory_info()
+    insts = []
+    for g in list_instances():
+        d = g.to_dict()
+        # 轮询频繁，日志只带最近一段，避免每 1.2 秒传几百行
+        if len(d.get("log") or []) > 200:
+            d["log"] = d["log"][-200:]
+        insts.append(d)
+    return {
+        "instances": insts,
+        "memory": {
+            "total": info["total"], "available": info["available"],
+            "load": info["load"], "sliderMax": core.slider_max_mb(info["total"]),
+        },
+    }
