@@ -708,6 +708,23 @@ input[type=range]::-webkit-slider-thumb {
 
 
 /* ---------- 地图页 ---------- */
+.save-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:10px; }
+.save-card { display:flex; align-items:center; gap:10px; padding:8px 10px;
+  border:1px solid var(--line); border-radius:12px; background:#fff; cursor:pointer;
+  transition:border-color .15s, box-shadow .15s; }
+.save-card:hover { box-shadow:var(--shadow); }
+.save-card.on { border-color:var(--ice-3); background:var(--ice-1); }
+.save-icon { width:46px; height:46px; border-radius:8px; object-fit:cover; flex:none;
+  background:linear-gradient(135deg,var(--ice-1),var(--ice-2)); border:1px solid var(--line); }
+.save-meta { min-width:0; flex:1; }
+.save-name { font-size:13px; font-weight:700; color:var(--deep);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.save-sub { font-size:11px; color:var(--muted); margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.save-ops { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; flex:none; }
+.badge { font-size:10px; padding:1px 6px; border-radius:999px; margin-left:5px;
+  background:rgba(47,143,196,.14); color:var(--deep); vertical-align:1px; }
+.badge.hot { background:rgba(217,83,79,.16); color:var(--err); }
 .map-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
 .map-stage { position:relative; background:#0d1520; border-radius:14px; overflow:hidden;
   border:1px solid var(--line); height:460px; cursor:grab; }
@@ -1193,6 +1210,12 @@ body.booting .app { opacity: 0; }
 
       <!-- ================= 地图 ================= -->
       <section class="page" id="page-map" hidden>
+        <div class="panel" style="margin-bottom:12px">
+          <div class="panel-head"><span>存档</span><span class="muted" id="saveCount"></span>
+            <span class="grow"></span><button class="btn ghost sm" id="btnSavesRefresh">刷新</button></div>
+          <div class="save-grid" id="saveGrid"><div class="hint">加载中…</div></div>
+          <div class="hint">点「地图」查看该存档的俯视地图；备份保存在存档目录旁的 _存档备份 文件夹，删除存档会先弹确认、不可恢复。</div>
+        </div>
         <div class="map-toolbar">
           <select class="select" id="mapWorld" style="width:240px"></select>
           <select class="select" id="mapDim" style="width:110px">
@@ -5487,6 +5510,7 @@ body.booting .app { opacity: 0; }
     if (!state._mapInit) {
       state._mapInit = true;
       bindMapEvents();
+      bindSaveCardEvents();
     }
     const sel = $("#mapWorld");
     const r = await api("/api/worlds");
@@ -5496,10 +5520,112 @@ body.booting .app { opacity: 0; }
       ? ws.map((w) => `<option value="${esc(w.dir)}" data-seed="${esc(w.seed ?? "")}">${esc(w.name)}（${esc(w.version || "未知版本")}）</option>`).join("")
       : '<option value="">没有找到存档</option>';
     if (cur && ws.some((w) => w.dir === cur)) sel.value = cur;
-    state.map.worlds = ws;
+    mapState().worlds = ws;
+    renderSaveCards();
     fillSkinTargets();
     if (ws.length) await loadMap();
     else $("#mapHint").textContent = "没有找到存档，先去「版本」页安装并进入一次游戏生成世界";
+  }
+
+  // ---- 存档管理卡片（参考 PCL CE 的存档管理） ----
+
+  function saveCardHtml(w, cur) {
+    const badges = (w.hardcore ? '<span class="badge hot">硬核</span>' : "")
+      + (w.cheats ? '<span class="badge">作弊</span>' : "");
+    const icon = w.icon
+      ? `<img class="save-icon" src="/api/world/icon?dir=${encodeURIComponent(w.dir)}" alt="" onerror="this.style.visibility='hidden'">`
+      : '<div class="save-icon"></div>';
+    return `<div class="save-card${w.dir === cur ? " on" : ""}" data-dir="${esc(w.dir)}">
+      ${icon}
+      <div class="save-meta">
+        <div class="save-name" title="${esc(w.name)}">${esc(w.name)}${badges}</div>
+        <div class="save-sub">${esc(w.version || "未知版本")} · ${esc(w.time || "未知时间")} · ${fmtSize(w.size || 0)}</div>
+      </div>
+      <div class="save-ops">
+        <button class="btn ghost sm" data-act="map">地图</button>
+        <button class="btn ghost sm" data-act="backup">备份</button>
+        <button class="btn ghost sm" data-act="open">打开</button>
+        <button class="btn ghost sm" data-act="rename">改名</button>
+        <button class="btn ghost sm" data-act="del">删除</button>
+      </div>
+    </div>`;
+  }
+
+  function renderSaveCards() {
+    const grid = $("#saveGrid");
+    const ws = (state.map && state.map.worlds) || [];
+    $("#saveCount").textContent = ws.length ? "共 " + ws.length + " 个" : "";
+    if (!ws.length) {
+      grid.innerHTML = '<div class="hint">没有找到存档，先去「版本」页安装并进入一次游戏生成世界。</div>';
+      return;
+    }
+    const cur = mapState().dir || $("#mapWorld").value || "";
+    grid.innerHTML = ws.map((w) => saveCardHtml(w, cur)).join("");
+  }
+
+  function bindSaveCardEvents() {
+    $("#saveGrid").addEventListener("click", onSaveCardClick);
+    $("#btnSavesRefresh").addEventListener("click", () => initMapPage());
+  }
+
+  async function onSaveCardClick(e) {
+    const card = e.target.closest(".save-card");
+    if (!card) return;
+    const dir = card.dataset.dir;
+    const act = (e.target.closest("[data-act]") || {}).dataset?.act || "map";
+    const w = ((state.map && state.map.worlds) || []).find((x) => x.dir === dir);
+
+    if (act === "map") {
+      $("#mapWorld").value = dir;
+      renderSaveCards();
+      await loadMap();
+      $("#mapStage").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (act === "backup") {
+      const btn = e.target.closest("[data-act]");
+      btn.disabled = true;
+      btn.textContent = "备份中…";
+      const r = await post("/api/world/backup", { dir });
+      btn.disabled = false;
+      btn.textContent = "备份";
+      if (!r.ok) { toast(r.msg, "err"); return; }
+      toast("已备份到 " + (r.data.path || "存档目录旁"), "ok");
+      return;
+    }
+    if (act === "open") {
+      const r = await post("/api/world/open", { dir });
+      if (!r.ok) toast(r.msg, "err");
+      return;
+    }
+    if (act === "rename") {
+      const name = await uiPrompt({
+        title: "重命名存档",
+        text: "新的存档名（游戏内显示的名字，最长 32 字）：",
+        value: (w && w.name) || "", placeholder: "存档名",
+        okText: "确定",
+      });
+      if (!name || !String(name).trim() || String(name) === (w && w.name)) return;
+      const r = await post("/api/world/rename", { dir, name: String(name) });
+      if (!r.ok) { toast(r.msg, "err"); return; }
+      toast("已改名：" + r.data.name, "ok");
+      await initMapPage();
+      return;
+    }
+    if (act === "del") {
+      const go = await uiConfirm({
+        title: "删除存档",
+        text: `确定要删除存档「${(w && w.name) || dir}」吗？\n整个存档文件夹会被删除，不可恢复。`,
+        okText: "删除", danger: true,
+      });
+      if (!go) return;
+      const r = await post("/api/world/delete", { dir });
+      if (!r.ok) { toast(r.msg, "err"); return; }
+      toast("已删除存档", "ok");
+      const m = mapState();
+      if (m.dir === dir) { m.dir = ""; m.img = null; }
+      await initMapPage();
+    }
   }
 
   function mapState() {

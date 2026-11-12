@@ -1818,6 +1818,64 @@ def api_world_structures():
                "slime": slimes, "bounds": {"x0": x0, "z0": z0, "x1": x1, "z1": z1}})
 
 
+# ---------------- 存档管理（参考 PCL CE 的存档管理） ----------------
+
+@app.get("/api/world/icon")
+def api_world_icon():
+    """存档图标（玩家在游戏里设置过图标才有 icon.png）。"""
+    d = request.args.get("dir", "").strip()
+    if d and os.path.isfile(os.path.join(d, "icon.png")):
+        return send_from_directory(d, "icon.png", mimetype="image/png")
+    return err("没有图标", 404)
+
+
+@app.post("/api/world/backup")
+def api_world_backup():
+    """把存档打包成 zip，放到存档目录旁的 _存档备份 里。"""
+    body = request.get_json(force=True, silent=True) or {}
+    r = world.backup_world((body.get("dir") or "").strip())
+    return ok(r) if r.get("ok") else err(r.get("msg", "备份失败"))
+
+
+@app.get("/api/world/backups")
+def api_world_backups():
+    d = request.args.get("dir", "").strip()
+    if not d:
+        return err("缺少存档目录")
+    return ok({"backups": world.list_backups(d)})
+
+
+@app.post("/api/world/delete")
+def api_world_delete():
+    """删除存档。UI 先弹确认；服务端只允许删已知 saves 目录内的有效存档。"""
+    body = request.get_json(force=True, silent=True) or {}
+    r = world.delete_world((body.get("dir") or "").strip())
+    return ok(r) if r.get("ok") else err(r.get("msg", "删除失败"))
+
+
+@app.post("/api/world/rename")
+def api_world_rename():
+    """改存档显示名（level.dat 的 LevelName，游戏内同样生效）。"""
+    body = request.get_json(force=True, silent=True) or {}
+    r = world.rename_world((body.get("dir") or "").strip(), body.get("name") or "")
+    return ok(r) if r.get("ok") else err(r.get("msg", "改名失败"))
+
+
+@app.post("/api/world/open")
+def api_world_open():
+    """在资源管理器里打开存档文件夹。"""
+    body = request.get_json(force=True, silent=True) or {}
+    d = (body.get("dir") or "").strip()
+    d2, e = world._validate_save(d)
+    if e:
+        return err(e)
+    try:
+        os.startfile(d2)      # noqa: S606 - 仅本地资源管理器
+    except Exception as ex:   # noqa: BLE001
+        return err("打开失败：" + str(ex))
+    return ok({"path": d2})
+
+
 @app.get("/api/world/marks")
 def api_world_marks_get():
     d = request.args.get("dir", "").strip()

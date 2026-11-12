@@ -10,9 +10,12 @@
 from __future__ import annotations
 
 import glob
+import gzip
 import json
 import math
 import os
+import re
+import shutil
 import struct
 import time
 import zlib
@@ -219,6 +222,7 @@ def list_worlds() -> List[Dict[str, Any]]:
                 except Exception:
                     continue
                 seed = _extract_seed(data)
+                icon = os.path.join(d, "icon.png")
                 out.append({
                     "name": data.get("LevelName") or name,
                     "dir": d,
@@ -234,6 +238,8 @@ def list_worlds() -> List[Dict[str, Any]]:
                                          time.localtime(int(data.get("LastPlayed", 0) or 0) / 1000))
                             if data.get("LastPlayed") else "",
                     "hardcore": bool(data.get("hardcore", False)),
+                    "cheats": bool(data.get("allowCommands", False)),
+                    "icon": icon if os.path.isfile(icon) else "",
                 })
         except Exception:
             continue
@@ -254,12 +260,158 @@ def _extract_seed(data: Dict[str, Any]) -> Optional[int]:
 
 
 def _world_size(d: str) -> int:
+    """存档真实占用（字节）。"""
     total = 0
-    for sub in ("region", "DIM-1/region", "DIM1/region"):
-        p = os.path.join(d, sub)
-        if os.path.isdir(p):
-            total += len([f for f in os.listdir(p) if f.endswith(".mca")])
-    return total * 512 * 512   # 粗略：每个区域文件覆盖 512x512 格
+    for dp, _dn, fn in os.walk(d):
+        for f in fn:
+            try:
+                total += os.path.getsize(os.path.join(dp, f))
+            except OSError:
+                pass
+    return total
+
+
+# ==================================================================
+# 存档管理：备份 / 删除 / 改名 / 打开目录（参考 PCL CE 的存档管理）
+# ==================================================================
+
+BACKUP_DIR_NAME = "_存档备份"
+
+
+def _sanitize(name: str) -> str:
+    return (re.sub(r'[\\/:*?"<>|]', "_", name or "").strip()
+            or "存档")
+
+
+def _validate_save(d: str) -> Tuple[Optional[str], Optional[str]]:
+    """校验：目录存在、里面有 level.dat、位于某个已知的 saves 根目录之内。
+    返回 (归一化路径, 错误信息)。"""
+    d = os.path.normpath(os.path.abspath(d or ""))
+    if not os.path.isdir(d):
+        return None, "存档目录不存在"
+    if not os.path.isfile(os.path.join(d, "level.dat")):
+        return None, "这不是一个有效的存档（缺少 level.dat）"
+    for root in _all_save_dirs():
+        try:
+            if os.path.commonpath([root, d]) == root:
+                return d, None
+        except ValueError:
+            continue
+    return None, "只允许管理游戏目录 saves 里的存档"
+
+
+def backup_world(d: str) -> Dict[str, Any]:
+    """把整个存档打包成 zip，放到存档目录旁的 _存档备份 里。"""
+    d, e = _validate_save(d)
+    if e:
+        return {"ok": False, "msg": e}
+    bdir = os.path.join(os.path.dirname(d), BACKUP_DIR_NAME)
+    os.makedirs(bdir, exist_ok=True)
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    base = os.path.join(bdir, "%s_%s" % (_sanitize(os.path.basename(d)), ts))
+    try:
+        zip_path = shutil.make_archive(base, "zip", d)
+    except Exception as ex:      # noqa: BLE001
+        return {"ok": False, "msg": "备份失败：" + str(ex)}
+    try:
+        size = os.path.getsize(zip_path)
+    except OSError:
+        size = 0
+    return {"ok": True, "path": zip_path, "size": size,
+            "name": os.path.basename(zip_path)}
+
+
+def list_backups(d: str) -> List[Dict[str, Any]]:
+    """列出这个存档已有的备份。"""
+    d, e = _validate_save(d)
+    if e:
+        return []
+    bdir = os.path.join(os.path.dirname(d), BACKUP_DIR_NAME)
+    prefix = _sanitize(os.path.basename(d)) + "_"
+    out: List[Dict[str, Any]] = []
+    if os.path.isdir(bdir):
+        for f in os.listdir(bdir):
+            p = os.path.join(bdir, f)
+            if f.startswith(prefix) and f.endswith(".zip") and os.path.isfile(p):
+                try:
+                    st = os.stat(p)
+                    out.append({"name": f, "path": p, "size": st.st_size,
+                                "time": time.strftime("%Y-%m-%d %H:%M",
+                                                      time.localtime(st.st_mtime))})
+                except OSError:
+                    continue
+    out.sort(key=lambda x: x["path"], reverse=True)
+    return out
+
+
+def delete_world(d: str) -> Dict[str, Any]:
+    """删除存档（仅限已知 saves 根目录内的有效存档）。"""
+    d, e = _validate_save(d)
+    if e:
+        return {"ok": False, "msg": e}
+    try:
+        shutil.rmtree(d)
+    except Exception as ex:      # noqa: BLE001
+        return {"ok": False, "msg": "删除失败：" + str(ex)}
+    clear_cache()
+    return {"ok": True}
+
+
+def rename_world(d: str, new_name: str) -> Dict[str, Any]:
+    """
+    改存档名（改 level.dat 里的 LevelName，游戏内显示的名字）。
+    做法：在解压后的 NBT 字节流里定位 LevelName 字符串标签，直接替换载荷，
+    再解析校验，防止改坏文件；原文件先备份为 level.dat.bak。
+    """
+    d, e = _validate_save(d)
+    if e:
+        return {"ok": False, "msg": e}
+    new_name = (new_name or "").strip()[:32]
+    if not new_name:
+        return {"ok": False, "msg": "名字不能为空"}
+    lvl = os.path.join(d, "level.dat")
+    try:
+        raw = _decompress(open(lvl, "rb").read())
+    except Exception as ex:      # noqa: BLE001
+        return {"ok": False, "msg": "level.dat 读取失败：" + str(ex)}
+    tag = b"\x08" + struct.pack(">H", len("LevelName")) + b"LevelName"
+    i = raw.find(tag)
+    if i < 0:
+        return {"ok": False, "msg": "level.dat 里找不到 LevelName"}
+    pos = i + len(tag)
+    try:
+        old_len = struct.unpack_from(">H", raw, pos)[0]
+    except struct.error:
+        return {"ok": False, "msg": "level.dat 结构异常"}
+    old_val = raw[pos + 2:pos + 2 + old_len]
+    payload = new_name.encode("utf-8")
+    if old_val == payload:
+        return {"ok": True, "name": new_name, "msg": "名字没变"}
+    new_raw = raw[:pos] + struct.pack(">H", len(payload)) + payload + raw[pos + 2 + old_len:]
+    try:
+        _, root = parse_nbt(new_raw)
+        if (root or {}).get("Data", {}).get("LevelName") != new_name:
+            raise ValueError("校验不一致")
+    except Exception:            # noqa: BLE001
+        return {"ok": False, "msg": "修改后无法通过校验，已放弃写入"}
+    bak = lvl + ".bak"
+    if not os.path.isfile(bak):
+        try:
+            shutil.copy2(lvl, bak)
+        except OSError:
+            pass
+    tmp = lvl + ".tmp"
+    try:
+        with open(tmp, "wb") as f:
+            f.write(gzip.compress(new_raw))
+        os.replace(tmp, lvl)
+    except OSError as ex:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return {"ok": False, "msg": "写入失败：" + str(ex)}
+    return {"ok": True, "name": new_name, "old": old_val.decode("utf-8", "replace")}
 
 
 # ==================================================================
