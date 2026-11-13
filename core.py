@@ -96,6 +96,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "themeDark": False,           # 自定义主题色时是深色界面还是浅色（跟着选过的预设走）
     "titleAlign": "left",         # 顶栏标题位置 left | center | right
     "uiScale": "auto",            # auto = 按 1020×680 等比缩放；off = 自由拉伸
+    # 主侧栏：顺序 + 隐藏（servers = 找服务器，尚未完工默认收起）
+    "navLayout": {"order": ["home", "versions", "resources", "map", "servers",
+                            "accounts", "settings", "guide"],
+                  "hidden": ["servers"]},
     # ---------- 启动行为 ----------
     "autoMemory": True,           # 按机器内存自动分配
     "autoMemGc": True,            # 自动分配时，运行中把多余的空闲堆还给系统

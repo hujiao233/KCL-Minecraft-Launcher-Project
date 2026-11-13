@@ -1016,6 +1016,10 @@ body.booting .app { opacity: 0; }
   display: grid; place-items: center;
 }
 .navcfg-row .nc-btn:hover { background: rgba(143,216,255,.4); color: var(--deep); }
+.navcfg-row .nc-btn[disabled] { opacity: .3; cursor: not-allowed; }
+.navcfg-row .nc-btn.is-off { background: rgba(217,83,79,.14); color: var(--err); }
+.navcfg-row .nc-hint { font-size: 10.5px; color: var(--muted); }
+.nav .nav-btn.dragging { opacity: .45; }
 
 /* 侧栏拖拽排序时的提示 */
 .nav.dragging .nav-btn { opacity: .62; }
@@ -1776,6 +1780,7 @@ body.booting .app { opacity: 0; }
             </div>
             <div class="hint" style="margin-bottom:8px">
               拖动行调整顺序，点 👁 隐藏 / 显示。也可以直接在左侧栏拖动按钮排序（左右方向无所谓，只认上下位置）。
+              「主页」和「设置」不能隐藏，免得找不回来；「找服务器」默认收起，想用点 👁 打开。
             </div>
             <div class="navcfg" id="navCfg"></div>
           </div>
@@ -2574,6 +2579,184 @@ body.booting .app { opacity: 0; }
     }).catch(() => {});
   }
 
+  /* ================= 主侧栏自定义（顺序 / 显隐，存进配置文件） ================= */
+  const NAV_PAGES = ["home", "versions", "resources", "map", "servers", "accounts", "settings", "guide"];
+  const NAV_DEFAULT_HIDDEN = ["servers"];      // 找服务器暂未完工，默认收起
+  const NAV_LOCKED = ["home", "settings"];     // 不能隐藏：藏了就找不回来了
+  const NAV_NAMES = {
+    home: "主页", versions: "版本", resources: "资源", map: "地图",
+    servers: "找服务器", accounts: "账户", settings: "设置", guide: "指南",
+  };
+  const NAV_NAMES_EN = {
+    home: "Home", versions: "Versions", resources: "Resources", map: "Map",
+    servers: "Servers", accounts: "Accounts", settings: "Settings", guide: "Guide",
+  };
+  function navName(id) { return LANG === "en" ? (NAV_NAMES_EN[id] || id) : (NAV_NAMES[id] || id); }
+
+  /** 读配置并补全成完整合法的布局：顺序去重补漏，隐藏只认已知页面且不动锁定页 */
+  function navLayout() {
+    const raw = (state.config && state.config.navLayout) || {};
+    const order = [];
+    (Array.isArray(raw.order) ? raw.order : []).forEach((id) => {
+      if (NAV_PAGES.indexOf(id) >= 0 && order.indexOf(id) < 0) order.push(id);
+    });
+    NAV_PAGES.forEach((id) => { if (order.indexOf(id) < 0) order.push(id); });
+    const src = Array.isArray(raw.hidden) ? raw.hidden : NAV_DEFAULT_HIDDEN;
+    const hidden = [];
+    src.forEach((id) => {
+      if (NAV_PAGES.indexOf(id) >= 0 && NAV_LOCKED.indexOf(id) < 0 && hidden.indexOf(id) < 0) {
+        hidden.push(id);
+      }
+    });
+    return { order: order, hidden: hidden };
+  }
+
+  function saveNavLayout(lay) {
+    const clean = { order: lay.order.slice(), hidden: lay.hidden.slice() };
+    if (state.config) state.config.navLayout = clean;
+    post("/api/config", { navLayout: clean });
+  }
+
+  /** 把布局落到侧栏（顺序 + 隐藏），并刷新设置里的行 */
+  function applyNavLayout() {
+    const lay = navLayout();
+    const nav = $(".nav");
+    if (!nav) return;
+    const btn = {};
+    $$(".nav .nav-btn").forEach((b) => { btn[b.dataset.page] = b; });
+    lay.order.forEach((id) => { if (btn[id]) nav.appendChild(btn[id]); });
+    NAV_PAGES.forEach((id) => {
+      if (!btn[id]) return;
+      const off = lay.hidden.indexOf(id) >= 0;
+      btn[id].hidden = off;
+      btn[id].classList.toggle("nav-off", off);
+    });
+    // 当前页被藏起来了：退回主页，别停在一个看不到入口的页面上
+    if (state.page && lay.hidden.indexOf(state.page) >= 0 && state.page !== "home") {
+      goto("home");
+    }
+    renderNavCfg();
+  }
+
+  /** 设置里的「侧栏导航」：一行一个页面，可拖拽排序、点眼睛显隐 */
+  function renderNavCfg() {
+    const box = $("#navCfg");
+    if (!box) return;
+    const lay = navLayout();
+    box.innerHTML = lay.order.map((id) => {
+      const off = lay.hidden.indexOf(id) >= 0;
+      const lock = NAV_LOCKED.indexOf(id) >= 0;
+      return `<div class="navcfg-row${off ? " off" : ""}" data-page="${id}" draggable="true">
+        <span class="nc-grip">⠿</span>
+        <span class="nc-name">${esc(navName(id))}</span>
+        ${lock ? '<span class="nc-hint">固定</span>' : ""}
+        <button class="nc-btn${off ? " is-off" : ""}" data-act="toggle"
+          title="${off ? esc(t("显示此项")) : esc(t("隐藏此项"))}"
+          ${lock ? "disabled" : ""}>${off ? "🚫" : "👁"}</button>
+      </div>`;
+    }).join("");
+    bindNavCfg();
+  }
+
+  /** 把 src 挪到 dst 前/后 */
+  function moveNav(src, dst, after) {
+    if (!src || !dst || src === dst) return;
+    const lay = navLayout();
+    lay.order = lay.order.filter((i) => i !== src);
+    let idx = lay.order.indexOf(dst);
+    if (idx < 0) idx = lay.order.length - 1;
+    lay.order.splice(after ? idx + 1 : idx, 0, src);
+    saveNavLayout(lay);
+    applyNavLayout();
+  }
+
+  /** 拖动落点判定：落在行的下半部分就插到后面 */
+  function navDropAfter(ev, el) {
+    const r = el.getBoundingClientRect();
+    return ev.clientY > r.top + r.height / 2;
+  }
+
+  function bindNavCfg() {
+    const box = $("#navCfg");
+    if (!box) return;
+    $$(".navcfg-row", box).forEach((row) => {
+      const tg = $(".nc-btn", row);
+      if (tg) {
+        tg.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const lay = navLayout();
+          const id = row.dataset.page;
+          if (NAV_LOCKED.indexOf(id) >= 0) { toast(t("主页与设置不能隐藏"), "err"); return; }
+          const i = lay.hidden.indexOf(id);
+          if (i >= 0) lay.hidden.splice(i, 1);
+          else lay.hidden.push(id);
+          saveNavLayout(lay);
+          applyNavLayout();
+        });
+      }
+      row.addEventListener("dragstart", (ev) => {
+        ev.dataTransfer.setData("text/plain", "nav:" + row.dataset.page);
+        ev.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+      row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        $$(".navcfg-row.over", box).forEach((r) => r.classList.remove("over"));
+      });
+      row.addEventListener("dragover", (ev) => { ev.preventDefault(); row.classList.add("over"); });
+      row.addEventListener("dragleave", () => row.classList.remove("over"));
+      row.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        row.classList.remove("over");
+        const src = (ev.dataTransfer.getData("text/plain") || "").replace(/^nav:/, "");
+        moveNav(src, row.dataset.page, navDropAfter(ev, row));
+      });
+    });
+  }
+
+  /** 侧栏本身也能直接拖：拖完记住顺序，点一下照常切页 */
+  let _navDragAt = 0;
+  function initNavCustomize() {
+    const nav = $(".nav");
+    if (nav && !nav.dataset.dragReady) {
+      nav.dataset.dragReady = "1";
+      $$(".nav-btn", nav).forEach((el) => {
+        el.setAttribute("draggable", "true");
+        el.addEventListener("dragstart", (ev) => {
+          ev.dataTransfer.setData("text/plain", "nav:" + el.dataset.page);
+          ev.dataTransfer.effectAllowed = "move";
+          nav.classList.add("dragging");
+          el.classList.add("dragging");
+        });
+        el.addEventListener("dragend", () => {
+          nav.classList.remove("dragging");
+          el.classList.remove("dragging");
+          $$(".nav-btn.drag-over", nav).forEach((b) => b.classList.remove("drag-over"));
+          _navDragAt = Date.now();
+        });
+        el.addEventListener("dragover", (ev) => { ev.preventDefault(); el.classList.add("drag-over"); });
+        el.addEventListener("dragleave", () => el.classList.remove("drag-over"));
+        el.addEventListener("drop", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          el.classList.remove("drag-over");
+          const src = (ev.dataTransfer.getData("text/plain") || "").replace(/^nav:/, "");
+          moveNav(src, el.dataset.page, navDropAfter(ev, el));
+        });
+      });
+    }
+    const rst = $("#btnNavReset");
+    if (rst && !rst.dataset.ready) {
+      rst.dataset.ready = "1";
+      rst.addEventListener("click", () => {
+        saveNavLayout({ order: NAV_PAGES.slice(), hidden: NAV_DEFAULT_HIDDEN.slice() });
+        applyNavLayout();
+        toast(t("已恢复默认侧栏"), "ok");
+      });
+    }
+  }
+
   // ---------------- 导航 ----------------
   const PAGE_TITLES = { home: "主页", versions: "版本管理", resources: "资源中心",
                         map: "存档地图", servers: "找服务器", accounts: "账户管理",
@@ -3221,6 +3404,8 @@ body.booting .app { opacity: 0; }
       $("#aboutMem").textContent = Math.round((hello.data.totalMemory || 0) / 1024 * 10) / 10 + " GB";
     }
     await loadConfig();
+    // 侧栏自定义：顺序 / 隐藏（默认收起「找服务器」）
+    try { initNavCustomize(); applyNavLayout(); } catch (e) { console.error("[脆冰] 侧栏布局应用失败", e); }
     // 套用本机保存的界面布局
     try {
       lzLoad();
@@ -4852,7 +5037,8 @@ body.booting .app { opacity: 0; }
     "重新扫描": "Scan Again", "重新体检": "Recheck", "结束进程": "Stop",
     "日志目录": "Logs", "打开": "Open", "浏览": "Browse",
     "自动补齐": "Auto-repair", "保存当前为预设": "Save as preset",
-    "删除": "Delete", "恢复默认": "Reset", "左侧": "Left",
+    "删除": "Delete", "恢复默认": "Reset", "左侧": "Left", "侧栏导航": "Sidebar", "隐藏此项": "Hide", "显示此项": "Show",
+    "已恢复默认侧栏": "Sidebar layout reset", "主页与设置不能隐藏": "Home and Settings can't be hidden",
     "删除版本": "Delete Version", "下载服务端": "Download Server",
     "登出用户": "Log out", "删除用户": "Delete Profile",
     "登出": "Log out", "添加标点": "Add Marker", "保存为预设": "Save as Preset",
@@ -7201,7 +7387,10 @@ body.booting .app { opacity: 0; }
 
   // ---------------- 事件绑定 ----------------
   function bind() {
-    $$(".nav-btn").forEach((b) => b.addEventListener("click", () => goto(b.dataset.page)));
+    $$(".nav-btn").forEach((b) => b.addEventListener("click", () => {
+      if (Date.now() - _navDragAt < 260) return;   // 刚拖完别误触切页
+      goto(b.dataset.page);
+    }));
 
     // 弹窗兜底：点遮罩或按 Esc 都能关
     document.addEventListener("keydown", (e) => {

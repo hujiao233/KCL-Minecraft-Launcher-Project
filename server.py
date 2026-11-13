@@ -443,7 +443,7 @@ def api_set_config():
                "language", "syncGameLang", "themePreset", "themeAccent",
                "titleAlign", "themePresets", "themeDark",
                "autoMemory", "autoMemGc", "autoServer", "updateCheck", "updateUrl",
-               "offlineMode", "siteUrl", "uiLayout"}
+               "offlineMode", "siteUrl", "uiLayout", "navLayout"}
     clean = {k: v for k, v in patch.items() if k in allowed}
     if "maxMemory" in clean:
         try:
