@@ -264,12 +264,13 @@ _WIN_HOOKS: dict = {}
 
 def _install_frameless_controller(window, title_height: int = 50, border: int = 7):
     """
-    给无边框窗口装上原生拖拽与拉伸。
+    给无边框窗口装上原生拖动（**只允许拖动，不允许改变窗口大小**）。
 
     原理：子类化窗口过程，接管 WM_NCHITTEST——
-      · 标题栏区域返回 HTCAPTION        → 系统级拖动（还能双击最大化、贴边分屏）
-      · 四边 / 四角返回 HTLEFT 等等     → 系统级拉伸，带正确的光标
-    手感和系统标题栏完全一致，不需要任何第三方库。
+      · 标题栏区域返回 HTCAPTION  → 系统级拖动
+      · 其余区域一律 HTCLIENT    → 没有拉伸热区，鼠标不会变成双向箭头
+    另外把双击标题栏最大化、WM_SYSCOMMAND 的 SC_MAXIMIZE / SC_SIZE、
+    Win+↑ 贴边分屏，以及窗口样式里的 WS_THICKFRAME / WS_MAXIMIZEBOX 全部挡掉。
     """
     if os.name != "nt":
         return
@@ -307,8 +308,13 @@ def _install_frameless_controller(window, title_height: int = 50, border: int = 
     GWL_WNDPROC = -4
     WM_NCHITTEST = 0x0084
     WM_NCLBUTTONDOWN = 0x00A1
+    WM_NCLBUTTONDBLCLK = 0x00A3
     WM_SYSCOMMAND = 0x0112
     SC_MOVE, SC_SIZE = 0xF010, 0xF000
+    SC_MAXIMIZE = 0xF030
+    GWL_STYLE = -16
+    WS_THICKFRAME = 0x00040000      # 可拉伸边框
+    WS_MAXIMIZEBOX = 0x00010000     # 最大化按钮 / Win+↑
     HTCLIENT, HTCAPTION = 1, 2
     HTLEFT, HTRIGHT, HTTOP = 10, 11, 12
     HTTOPLEFT, HTTOPRIGHT = 13, 14
@@ -356,29 +362,12 @@ def _install_frameless_controller(window, title_height: int = 50, border: int = 
     btn_w = int(150 * scale)
 
     def hit_test(x, y):
-        """按顶层窗口矩形判定：四边四角 → 拉伸，顶栏 → 拖动。"""
+        """只有顶栏可拖动；四边四角一律 HTCLIENT —— 窗口不能拉伸。"""
         try:
             rc = wintypes.RECT()
             if not user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rc)):
                 return HTCLIENT
-            if not user32.IsZoomed(wintypes.HWND(hwnd)):  # 最大化时不给拉伸
-                if x <= rc.left + bd and y <= rc.top + bd:
-                    return HTTOPLEFT
-                if x >= rc.right - bd and y <= rc.top + bd:
-                    return HTTOPRIGHT
-                if x <= rc.left + bd and y >= rc.bottom - bd:
-                    return HTBOTTOMLEFT
-                if x >= rc.right - bd and y >= rc.bottom - bd:
-                    return HTBOTTOMRIGHT
-                if x <= rc.left + bd:
-                    return HTLEFT
-                if x >= rc.right - bd:
-                    return HTRIGHT
-                if y <= rc.top + bd:
-                    return HTTOP
-                if y >= rc.bottom - bd:
-                    return HTBOTTOM
-            # 标题栏：右侧留给窗口按钮（最小化/最大化/关闭）
+            # 顶栏：右侧留给窗口按钮（最小化 / 关闭）
             if y <= rc.top + th and x < rc.right - btn_w:
                 return HTCAPTION
         except Exception:
@@ -405,16 +394,47 @@ def _install_frameless_controller(window, title_height: int = 50, border: int = 
                     pass
                 return HTCLIENT if h == target else CallWindowProc(
                     old, wintypes.HWND(h), msg, wp, lp)
-            if msg == WM_NCLBUTTONDOWN and (wp == HTCAPTION or wp in RESIZE_HT):
-                # 消息落在子窗口上，转发给顶层窗口让系统接管拖动 / 拉伸
+            if msg == WM_NCLBUTTONDBLCLK and wp == HTCAPTION:
+                # 双击标题栏 = 系统默认的最大化，这里直接吃掉
+                return 0
+            if msg == WM_NCLBUTTONDOWN and wp == HTCAPTION:
+                # 消息落在子窗口上时，转发给顶层窗口让系统接管「移动」
                 try:
-                    cmd = SC_MOVE | HTCAPTION if wp == HTCAPTION else SC_SIZE | wp
-                    SendMessage(wintypes.HWND(hwnd), WM_SYSCOMMAND, cmd, lp)
+                    SendMessage(wintypes.HWND(hwnd), WM_SYSCOMMAND,
+                                SC_MOVE | HTCAPTION, lp)
                     return 0
                 except Exception:
                     pass
+            if msg == WM_SYSCOMMAND:
+                # 最大化 / 全屏 / 拉伸（含 Win+↑ 贴边分屏）一律拒绝
+                # SC_SIZE 家族是 0xF000~0xF00F，SC_MOVE(0xF010) 要放行，否则拖不动
+                if wp == SC_MAXIMIZE or (SC_SIZE <= wp < SC_MOVE):
+                    return 0
             return CallWindowProc(old, wintypes.HWND(h), msg, wp, lp)
         return WNDPROC(_proc)
+
+    # 0) 窗口样式：清掉可拉伸边框与最大化能力（不改 WNDPROC 那套 argtypes）
+    try:
+        LONG_FN = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, ctypes.c_int,
+                                     ctypes.c_ssize_t)
+        GET_FN = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, ctypes.c_int)
+        set_long = LONG_FN(ctypes.cast(SetWindowLongPtr, ctypes.c_void_p).value)
+        get_long = GET_FN(ctypes.cast(GetWindowLongPtr, ctypes.c_void_p).value)
+        style = get_long(wintypes.HWND(hwnd), GWL_STYLE)
+        new_style = style & ~(WS_THICKFRAME | WS_MAXIMIZEBOX)
+        if style and new_style != style:
+            set_long(wintypes.HWND(hwnd), GWL_STYLE, new_style)
+            user32.SetWindowPos.argtypes = [
+                wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, wintypes.UINT]
+            SWP_NOSIZE, SWP_NOMOVE = 0x0001, 0x0002
+            SWP_NOZORDER, SWP_FRAMECHANGED = 0x0004, 0x0020
+            user32.SetWindowPos(wintypes.HWND(hwnd), None, 0, 0, 0, 0,
+                                SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER |
+                                SWP_FRAMECHANGED)
+            print("[脆冰] 窗口尺寸已锁定：不可拉伸 / 不可最大化（仍可拖动）")
+    except Exception as exc:
+        print("[脆冰] 窗口样式锁定失败（不影响拖动）：", exc)
 
     # 1) 顶层窗口
     old_ptr = GetWindowLongPtr(wintypes.HWND(hwnd), GWL_WNDPROC)
@@ -584,7 +604,9 @@ def _window_drag_loop(hwnd, gen, mode, edge, start_rc, sx, sy):
 
 
 def _begin_window_drag(mode="move", edge=""):
-    """JS 在顶栏 / 边缘把手按下时调用。返回是否真的开始了。"""
+    """JS 在顶栏按下时调用。窗口尺寸固定，只接受 move，拉伸一律拒绝。"""
+    if mode != "move":
+        return False
     hwnd = _WIN_HOOKS.get("hwnd")
     if not hwnd:
         return False
@@ -754,34 +776,20 @@ def main() -> int:
                 webview.windows[0].minimize()
 
             def toggle_maximize(self):
-                if self.maximized:
-                    webview.windows[0].restore()
-                else:
-                    webview.windows[0].maximize()
-                self.maximized = not self.maximized
-                return self.maximized
+                """窗口尺寸固定：不允许最大化 / 全屏。保留接口只为兼容旧页面。"""
+                self.maximized = False
+                return False
 
             def close(self):
                 webview.windows[0].destroy()
 
             def start_drag(self):
-                """页面顶栏按下：拖动窗口（最大化时先还原，跟系统一致）。"""
-                try:
-                    if self.maximized:
-                        webview.windows[0].restore()
-                        self.maximized = False
-                        time.sleep(0.25)      # 等还原生效再取窗口矩形
-                except Exception:
-                    pass
+                """页面顶栏按下：只移动窗口，不改变大小。"""
                 return _begin_window_drag("move")
 
             def start_resize(self, edge):
-                """页面边缘把手按下：拉伸窗口。edge = left/right/top/bottom/四角。"""
-                edge = str(edge or "").lower()
-                if edge not in ("left", "right", "top", "bottom",
-                                "topleft", "topright", "bottomleft", "bottomright"):
-                    return False
-                return _begin_window_drag("resize", edge)
+                """窗口尺寸固定：拉伸接口保留但不做任何事。"""
+                return False
 
             def stop_drag(self):
                 """鼠标松开：结束拖动 / 拉伸。"""
@@ -796,6 +804,9 @@ def main() -> int:
             height=680,
             min_size=(880, 600),
             background_color="#EAF3FA",
+            resizable=False,     # 窗口尺寸固定：不能拉伸
+            fullscreen=False,    # 不允许全屏
+            zoomable=False,      # 不允许 WebView2 缩放
             frameless=True,      # 去掉系统标题栏，顶栏由页面自己画
             easy_drag=False,     # 拖动交给下面的原生 WM_NCHITTEST，更跟手
             shadow=False,        # 关键：shadow=True 时 DWM 会把玻璃框扩进来，无边框下显示为黑框

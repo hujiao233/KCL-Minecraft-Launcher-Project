@@ -1197,10 +1197,6 @@ body.booting .app { opacity: 0; }
         <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" stroke-width="2" fill="none"/></svg>
         <span>指南</span>
       </button>
-      <button class="nav-btn" data-page="dev">
-        <svg viewBox="0 0 24 24"><path d="M9.5 7 5 12l4.5 5M14.5 7 19 12l-4.5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>开发</span>
-      </button>
     </nav>
 
     <div class="sidebar-foot">
@@ -1230,9 +1226,6 @@ body.booting .app { opacity: 0; }
         <div class="win-ctrl">
           <button class="win-btn" id="winMin" title="最小化">
             <svg viewBox="0 0 24 24"><path d="M5 11.2h14v1.7H5z"/></svg>
-          </button>
-          <button class="win-btn" id="winMax" title="最大化">
-            <svg viewBox="0 0 24 24"><path d="M5.5 5.5h13v13h-13v-13zm1.7 1.7v9.6h9.6v-9.6h-9.6z"/></svg>
           </button>
           <button class="win-btn close" id="winClose" title="关闭">
             <svg viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z"/></svg>
@@ -1945,7 +1938,7 @@ body.booting .app { opacity: 0; }
               </label>
             </div>
             <div class="hint">
-              界面跟着窗口自适应：拖动边缘想拉多宽就多宽，内容会自动排开，不会被拉变形。
+              界面按窗口大小自适应铺开。窗口尺寸固定：不能拉伸、不能全屏，按住顶栏可以拖动位置。
             </div>
           </div>
 
@@ -1959,15 +1952,14 @@ body.booting .app { opacity: 0; }
               </label>
             </div>
             <div class="hint" id="offlineHint">
-              关闭连接后启动器照样能用，但无法访问网站端的数据（开发空间、社区等 KCL 服务器内容全部不连接）；
-              其它资源下载不受影响。
+              官网已经改成静态站，启动器不连它也能正常用；关闭后不会访问任何在线数据，其它资源下载不受影响。
             </div>
             <div class="form-row" style="margin-top:10px">
               <label>网站地址</label>
               <input class="input grow" id="inpSiteUrl" placeholder="脆冰网站服务端地址，如 http://127.0.0.1:8756">
             </div>
             <div class="hint" id="siteUrlHint">
-              填好「开发」页才会连接网站的开发空间；留空或连不上时开发空间会一直尝试连接，不影响其它功能。
+              官网静态化之后，开发空间与找服务器暂时下线；这里留空即可，不影响启动器其它功能。下载与防伪码验证都在官网网页里完成。
             </div>
           </div>
 
@@ -2015,84 +2007,31 @@ body.booting .app { opacity: 0; }
         </div>
       </section>
 
-      <!-- ================= 开发者 ================= -->
-      <section class="page" id="page-dev">
-        <div class="panel dev-hero">
-          <img src="/assets/cuibing.png" class="dev-logo" alt="脆冰">
-          <div class="dev-hero-txt">
-            <div class="dev-title">开发团队</div>
-            <div class="dev-sub">KCL 启动器 · KC studio 制作，更好，更稳定的选择</div>
-          </div>
-        </div>
-
-        <div class="dev-grid">
-          <div class="dev-card">
-            <img id="devAvatar" class="dev-avatar-img" alt="shiyixianjunawa" src="data:image/png;base64,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">
-            <div class="dev-name">shiyixianjunawa</div>
-            <div class="dev-tags">
-              <span class="dev-tag primary">项目发起人</span>
-              <span class="dev-tag">主要框架内容</span>
-            </div>
-            <ul class="dev-list">
-              <li>整体架构：Flask 本地服务 + pywebview 无边框窗口 + 单文件界面</li>
-              <li>游戏版本、模组 / 资源 / 光影的下载、校验与安装目标</li>
-              <li>外挂类内容拦截、下载源与镜像加速、排序与检索</li>
-              <li>存档 SeedMap、结构查询、史莱姆区块、实时地图与标点规划</li>
-              <li>皮肤（LittleSkin 公开库 / 正版玩家）、微软与第三方登录</li>
-              <li>Java 自动补齐与自动选择、自定义启动参数</li>
-            </ul>
-          </div>
-
-          <div class="dev-card side">
-            <div class="dev-card-title">关于 KCL</div>
-            <ul class="dev-list">
-              <li>不依赖服务器：装好的内容随时离线可用</li>
-              <li>不强制更新：只有你点按钮才联网检查</li>
-              <li>内置运行环境：EXE 双击即用，无需安装 Python</li>
-              <li>界面自适应，窗口可拖动、四边四角可拉伸</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="panel" style="margin-top:14px">
-          <div class="panel-head">
-            <span>开发空间 · 脆冰网站</span>
-            <div class="head-actions">
-              <span class="hint" id="devSpaceState" style="margin:0">未连接</span>
-              <button class="btn ghost xs" id="btnDevRetry" hidden>重新连接</button>
-            </div>
-          </div>
-          <div id="devSpaceOff" class="dev-off" hidden>
-            <div>🔌 已关闭与外界连接</div>
-            <div class="hint" style="margin-top:6px">
-              现在无法访问网站端的数据（开发空间不会连接）。启动器其它功能不受影响；
-              想看开发空间，去 设置 →「网站与连接」打开外界连接。
-            </div>
-          </div>
-          <div id="devSpaceMain">
-            <div class="dev-compose">
-              <input class="input" id="devPostTitle" placeholder="标题（可留空）" maxlength="200">
-              <textarea class="input" id="devPostText" placeholder="和开发聊聊：想法、问题、建议…" maxlength="20000"></textarea>
-              <div class="head-actions" style="flex-wrap:wrap;gap:8px">
-                <span class="hint" id="devNameHint" style="margin:0"></span>
-                <select class="select" id="devTarget" style="width:auto;min-width:190px">
-                  <option value="dev">发布到：开发空间</option>
-                </select>
-                <label class="hint" id="devAlsoWrap" style="margin:0;display:none;gap:4px;align-items:center">
-                  <input type="checkbox" id="devAlsoDev" checked> 同时发到开发空间
-                </label>
-                <button class="btn ghost xs" id="btnDevReload">刷新空间</button>
-                <button class="btn primary sm" id="btnDevPost">发布</button>
-              </div>
-            </div>
-            <div id="devFeed" class="dev-feed"><div class="hint">正在连接开发空间…</div></div>
-          </div>
-        </div>
-      </section>
-
       <!-- ================= 找服务器（脆冰网站） ================= -->
       <section class="page" id="page-servers">
+        <!-- 暂未制作完成：灰色蒙版盖住整套未开放的服务器 UI -->
+        <div class="srv-soon">
+          <div class="soon-card">
+            <div class="soon-badge">🚧 暂未制作完成</div>
+            <h2>找服务器</h2>
+            <p>服务器列表需要长期维护和审核，先不开放。<br>启动器本体的其它功能照常使用。</p>
+            <div class="soon-sub">慢慢来 · kc studio</div>
+          </div>
+        </div>
         <style>
+          #page-servers { position: relative; }
+          .srv-soon { position: absolute; inset: 0; z-index: 60; display: flex;
+            align-items: flex-start; justify-content: center; padding: 54px 20px 20px;
+            background: rgba(226, 232, 238, .90); backdrop-filter: blur(3px); }
+          .srv-soon .soon-card { width: min(520px, 100%); text-align: center; padding: 26px 28px;
+            border-radius: 18px; border: 1px dashed #b6c3cd; background: rgba(255,255,255,.72);
+            box-shadow: 0 18px 44px rgba(40,60,75,.13); color: #46525e; }
+          .srv-soon .soon-badge { display: inline-block; font-size: 12.5px; font-weight: 800;
+            letter-spacing: .5px; color: #6c7a86; background: #e9edf1; border: 1px solid #d2dbe2;
+            border-radius: 999px; padding: 4px 14px; }
+          .srv-soon h2 { font-size: 22px; margin: 14px 0 8px; color: #384753; }
+          .srv-soon p { font-size: 13.5px; line-height: 1.9; margin: 0; color: #687783; }
+          .srv-soon .soon-sub { margin-top: 16px; font-size: 11.5px; color: #93a1ab; }
           .srv-wrap { max-width: 1000px; }
           .srv-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
           .srv-bar .input, .srv-bar .select { width: auto; flex: 0 0 auto; }
@@ -2853,7 +2792,7 @@ body.booting .app { opacity: 0; }
   // ---------------- 导航 ----------------
   const PAGE_TITLES = { home: "主页", versions: "版本管理", resources: "资源中心",
                         map: "存档地图", servers: "找服务器", accounts: "账户管理",
-                        settings: "设置", guide: "使用指南", dev: "开发者" };
+                        settings: "设置", guide: "使用指南" };
   function goto(page) {
     $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
     $$(".page").forEach((p) => {
@@ -2869,7 +2808,6 @@ body.booting .app { opacity: 0; }
       if (_lzOn) { lzSolidify(page); lzApplyPage(page); }
       else lzApplyPage(page);
     } catch (e) {}
-    if (page === "dev") { try { devSpaceWake(); } catch (e) {} }
     if (page === "versions") { loadInstalled(); loadOnline(false); }
     if (page === "resources") initResPage();
     if (page === "map") {
@@ -2879,7 +2817,6 @@ body.booting .app { opacity: 0; }
     }
     if (page === "accounts") loadAccounts();
     if (page === "settings") loadSettings();
-    if (page === "servers") initServersPage();
     if (page === "home" || page === "settings") { try { refreshMemInfo(); } catch (e) {} }
     // 第一次进指南页：提示可以点「我要试试」
     if (page === "guide") { try { maybeShowTourHint(); } catch (e) {} }
@@ -5256,10 +5193,8 @@ body.booting .app { opacity: 0; }
     "下载残留（.cbtmp）": "Download leftovers (.cbtmp)", "崩溃报告": "Crash reports",
     "损坏 / 空文件缓存": "Broken / empty cache", "一键清理": "Clean now",
     "界面显示": "Display",
-    "界面跟着窗口自适应：拖动边缘想拉宽就拉宽，内容会自动排开，不会被拉变形。":
-      "The UI adapts to the window: drag any edge as wide as you like and content reflows instead of stretching.",
-    "界面跟着窗口自适应：拖动边缘想拉多宽就多宽，内容会自动排开，不会被拉变形。":
-      "The UI adapts to the window: drag any edge as wide as you like and content reflows instead of stretching.",
+    "界面按窗口大小自适应铺开。窗口尺寸固定：不能拉伸、不能全屏，按住顶栏可以拖动位置。":
+      "The UI adapts to the window. The size is fixed (no resizing / fullscreen); drag the title bar to move it.",
 
     /* ---- 设置：网站与连接 / 布局 / 关于 ---- */
     "网站与连接": "Website & Network", "外界连接": "Network",
@@ -5307,8 +5242,8 @@ body.booting .app { opacity: 0; }
     "不强制更新：只有你点按钮才联网检查": "No forced updates: it only goes online when you click",
     "内置运行环境：EXE 双击即用，无需安装 Python":
       "Bundled runtime: double-click the EXE, no Python installation needed",
-    "界面自适应，窗口可拖动、四边四角可拉伸":
-      "Adaptive UI, draggable window, resizable on all four sides and corners",
+    "界面自适应，窗口固定大小、可拖动":
+      "Adaptive UI, fixed window size, draggable by the title bar",
     "开发空间 · 脆冰网站": "Dev space · Cuibing site",
     "已关闭与外界连接": "Network is disabled",
     "现在无法访问网站端的数据（开发空间不会连接）。启动器其它功能不受影响":
@@ -6257,11 +6192,19 @@ body.booting .app { opacity: 0; }
 
   function initWindowControls() {
     const min = $("#winMin");
-    const max = $("#winMax");
     const close = $("#winClose");
     if (min) min.addEventListener("click", () => winctl("minimize"));
-    if (max) max.addEventListener("click", () => winctl("toggle_maximize"));
     if (close) close.addEventListener("click", () => winctl("close"));
+    // 窗口固定尺寸：不能拉伸、不能最大化（全屏），只能按住顶栏拖动。
+    // 顺手挡掉 WebView2 的 Ctrl+滚轮 / Ctrl+加减号缩放。
+    document.addEventListener("wheel", (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "F11") { e.preventDefault(); return; }   // 不允许全屏
+      if (!e.ctrlKey) return;
+      if (["+", "-", "=", "0"].includes(e.key) || e.key === "Add" || e.key === "Subtract") e.preventDefault();
+    });
     // 浏览器里预览时没有 pywebview，隐藏这三个按钮避免误导。
     // 注意：pywebview 注入晚于页面加载，所以必须在 pywebviewready 后再查一次。
     syncWinCtrl();
@@ -6332,24 +6275,8 @@ body.booting .app { opacity: 0; }
         e.preventDefault();               // 防止选中文字 / 拖出图片
         call("start_drag");
       });
-      bar.addEventListener("dblclick", (e) => {
-        if (e.target.closest(".win-ctrl, button")) return;
-        try { winctl("toggle_maximize"); } catch (err) {}
-      });
+      // 双击顶栏不再最大化：窗口尺寸固定
     }
-    [["top", "top"], ["bottom", "bottom"], ["left", "left"], ["right", "right"],
-     ["topleft", "topleft"], ["topright", "topright"],
-     ["bottomleft", "bottomleft"], ["bottomright", "bottomright"]].forEach((pair) => {
-      const el = document.createElement("div");
-      el.className = "wgrip wgrip-" + pair[0];
-      el.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        call("start_resize", pair[1]);
-      });
-      document.body.appendChild(el);
-    });
     window.addEventListener("mouseup", endDrag);
     window.addEventListener("blur", endDrag);
   }
@@ -7834,34 +7761,6 @@ body.booting .app { opacity: 0; }
       { page: "settings", sel: "#presetRow",
         title: "主题与配色",
         text: "5 套预设任选，调好颜色、标题位置后还能「保存预设」，随时切回来。" },
-    ] },
-    { sec: "findsrv", steps: [
-      { page: "settings", sel: "#inpSiteUrl",
-        title: "先连上网站",
-        text: "找服务器的数据来自脆冰网站：这里填网站地址，上面那个开关别勾成「关闭外界连接」。填好再回「找服务器」页。" },
-      { page: "servers", sel: "#srvQ,#srvType,#srvVer,#srvMod",
-        title: "按条件筛",
-        text: "关键词、类型、MC 版本、mod 关键词随便组合；「只看 KCL 已装版本」会自动带上你装好的版本，只显示能直接进的服。" },
-      { page: "servers", sel: "#btnSrvSearch",
-        title: "开始搜索",
-        text: "点搜索拉取列表；「全部」清空条件，「重新连接」用来在断线后重试。" },
-      { page: "servers", sel: "#srvList",
-        title: "申请加入",
-        text: "看中哪个就点卡片上的「我要加入」，服主同意后按钮变成「已加入 · 看地址」，点开就能拿到地址进服。" },
-    ] },
-    { sec: "devspace", steps: [
-      { page: "dev", sel: "#devPostText",
-        title: "写点什么",
-        text: "标题可留空，正文写想法、问题或建议；第一次发布时会让你填个昵称，之后就记住了。" },
-      { page: "dev", sel: "#devTarget",
-        title: "选发到哪",
-        text: "默认发到开发空间；下拉里能改成你加入的私人空间，选私人空间时还能勾选「同时发到开发空间」。下拉旁边「刷新空间」可重拉列表。" },
-      { page: "dev", sel: "#btnDevPost",
-        title: "发布",
-        text: "点发布即可，成功后下面的时间线会立刻出现你的留言；旁边的「刷新空间」可以手动重拉。" },
-      { page: "settings", sel: "#inpSiteUrl",
-        title: "连不上时看这里",
-        text: "开发空间同样依赖网站连接：地址填对、开关打开就行。关着也不影响离线启动游戏。" },
     ] },
     { sec: "javacomp", steps: [
       { page: "settings", sel: "#btnJavaFillAll",
