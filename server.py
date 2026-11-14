@@ -1259,10 +1259,15 @@ def api_update_check():
 # 更新日志（新版本发版时往列表头部追加一条）
 CHANGELOG: List[Dict[str, Any]] = [
     {
-        "version": "1.2.4",
-        "date": "开发中",
-        "title": "下载不再怕网络劫持，登录报错说人话",
+        "version": "1.3.0",
+        "date": "2026-11-14",
+        "title": "存档管理上线，下载不再怕网络劫持",
         "items": [
+            "地图页新增存档管理（参考 PCL CE）：存档卡片列表显示图标、版本、上次游玩时间、"
+            "真实占用大小、硬核/作弊标记",
+            "每个存档可以一键备份（打包 zip 到 _存档备份）、打开所在文件夹、"
+            "改名（改 level.dat，游戏内同样生效，改前留备份并解析校验）、删除（弹确认，"
+            "且只允许删游戏目录 saves 里的有效存档）",
             "修好开着加速器（Steamcommunity302 / Watt Toolkit 一类）时 Java 自动安装失败的问题："
             "Mojang 运行时清单优先走 bmclapi 镜像，Adoptium 兜底改用清华镜像直链，"
             "不再依赖会被劫持证书的 github.com 和 piston-meta.mojang.com；"

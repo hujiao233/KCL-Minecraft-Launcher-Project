@@ -27,7 +27,7 @@ import requests
 # ==================================================================
 
 APP_NAME = "CuibingLauncher"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.3.0"
 
 # 启动器本体数据目录：%APPDATA%/CuibingLauncher
 ROOT_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME)
