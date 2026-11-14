@@ -653,6 +653,63 @@ def _after_window_start(window):
         _force_window_icon()
     except Exception:
         pass
+    try:
+        _sweep_stray_windows(window)
+    except Exception:
+        pass
+
+
+def _sweep_stray_windows(window):
+    """兜底：本进程里除了主窗口，别留下半截可见的小窗口。
+
+    曾经出现过「启动后多一条空白小窗，任务管理器里又跟主进程并成一条」的情况，
+    这里在窗口稳定后扫一遍，把不是主窗口的矮条窗口直接收掉。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    main_hwnd = 0
+    try:
+        main_hwnd = int(window.native.Handle) if hasattr(window, "native") else 0
+    except Exception:
+        main_hwnd = 0
+    if not main_hwnd:
+        return
+
+    def _run():
+        time.sleep(3.5)
+        try:
+            user32 = ctypes.windll.user32
+            stale = []
+
+            def _cb(h, _l):
+                if h == main_hwnd or not user32.IsWindowVisible(h):
+                    return True
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+                if pid.value != os.getpid():
+                    return True
+                buf = ctypes.create_unicode_buffer(64)
+                user32.GetWindowTextW(h, buf, 64)
+                if buf.value != "KCL启动器":
+                    return True
+                rc = wintypes.RECT()
+                user32.GetWindowRect(h, ctypes.byref(rc))
+                if rc.bottom - rc.top < 300:      # 只剩一条边的小窗，收掉
+                    stale.append(h)
+                return True
+
+            proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND,
+                                      wintypes.LPARAM)(_cb)
+            user32.EnumWindows(proc, 0)
+            WM_CLOSE = 0x0010
+            for h in stale:
+                # DestroyWindow 只能由创建窗口的线程调用；PostMessage 才跨线程有效
+                user32.PostMessageW(wintypes.HWND(h), WM_CLOSE, 0, 0)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _force_window_icon():
@@ -716,11 +773,58 @@ def _force_window_icon():
         apply(h)
 
 
+def _already_running() -> bool:
+    """单实例：已经有一个启动器在跑时，把它的窗口叫到前面，本进程直接退出。
+
+    否则双击两次会起两套 Flask + 两个窗口，第二个窗口没内容、任务管理器里
+    又跟第一个并成同一个 python.exe，看起来就像「看不见的弹窗」。
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL,
+                                          wintypes.LPCWSTR]
+        handle = kernel32.CreateMutexW(None, False, "Local\\KCL_Cuibing_Launcher")
+        if not handle:
+            return False
+        if kernel32.GetLastError() != 183:          # ERROR_ALREADY_EXISTS
+            _WIN_HOOKS["mutex"] = handle            # 活到进程结束，别被回收
+            return False
+
+        user32 = ctypes.windll.user32
+        hits: list = []
+
+        def _cb(h, _l):
+            buf = ctypes.create_unicode_buffer(64)
+            user32.GetWindowTextW(h, buf, 64)
+            if buf.value == "KCL启动器" and user32.IsWindowVisible(h):
+                hits.append(h)
+            return True
+
+        proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND,
+                                  wintypes.LPARAM)(_cb)
+        user32.EnumWindows(proc, 0)
+        for h in hits[:1]:
+            user32.ShowWindow(h, 9)                  # SW_RESTORE
+            user32.SetForegroundWindow(h)
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+
+
 def main() -> int:
     argv = sys.argv[1:]
 
     if "--build" in argv:
         build_bootstrap()
+        return 0
+
+    if _already_running():
+        print("[脆冰] 已经有一个启动器在运行，已切到它的窗口")
         return 0
 
     core.ensure_dirs()
@@ -815,7 +919,11 @@ def main() -> int:
         app_icon = os.path.join(BASE_DIR, "ui", "assets", "cuibing.ico")
         if not os.path.isfile(app_icon):
             app_icon = None
-        webview.start(_after_window_start, (window,), debug=False, icon=app_icon)
+        # private_mode=False + 固定 storage_path：复用 WebView2 的用户数据目录，
+        # 冷启动少掉「建临时目录 → 再删」这一大截
+        webview.start(_after_window_start, (window,), debug=False, icon=app_icon,
+                      private_mode=False,
+                      storage_path=os.path.join(BASE_DIR, "webview_data"))
         return 0
     except Exception:
         traceback.print_exc()

@@ -327,7 +327,7 @@ def missing_files(vid: str, cfg: Dict[str, Any] | None = None,
                   check_assets: bool = True) -> Tuple[List[str], List[str]]:
     """返回 (缺失文件列表, 警告列表)。"""
     cfg = cfg or core.load()
-    vj = vmod.resolve_version(vid)
+    vj = vmod.resolve_version(vid, cfg)
 
     missing: List[str] = []
     warns: List[str] = []
@@ -382,12 +382,13 @@ def check_ready(vid: str, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
     return {"ready": len(missing) == 0, "missing": missing[:50], "warnings": warns}
 
 
-def _repair_files(vid: str, with_assets: bool = True) -> bool:
+def _repair_files(vid: str, with_assets: bool = True,
+                  cfg: Dict[str, Any] | None = None) -> bool:
     """补下载缺失的游戏文件（PCL 启动链里的「补全文件」）。"""
     t = core.Task("repair", "补全文件", vid)
     t.state = core.TaskState.RUNNING
     try:
-        vmod.install_version(vid, t, with_assets=with_assets)
+        vmod.install_version(vid, t, with_assets=with_assets, cfg=cfg)
     except Exception:  # noqa: BLE001
         return False
     return t.state == core.TaskState.SUCCESS
@@ -439,7 +440,7 @@ def precheck(vid: str, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
                     "msg": f"游戏路径里不能包含 ! 或 ;（{p}），"
                            f"请在设置里换一个游戏目录，否则 Minecraft 无法启动"}
     try:
-        vj = vmod.resolve_version(vid)
+        vj = vmod.resolve_version(vid, cfg)
     except Exception as e:  # noqa: BLE001
         # 版本 JSON 丢了，或者不是 Mojang 官方版本号（NeoForge/Forge 等）
         # 导致联网补也补不到：这时候给用户一条能操作的建议，别甩 404 上去
@@ -700,7 +701,7 @@ def build_command(vid: str, account: Dict[str, str], cfg: Dict[str, Any],
     返回 (argv, cwd, meta)
     """
     opts = opts or {}
-    vj = vmod.resolve_version(vid)
+    vj = vmod.resolve_version(vid, cfg)
 
     # 版本设置优先，其次主设置，最后是本次启动的临时覆盖
     st = core.version_settings(vid, cfg)
@@ -1003,10 +1004,10 @@ def launch(vid: str, account_name: str = "", cfg: Dict[str, Any] | None = None,
         # PCL 的「补全文件」步骤：少量文件缺失时先补齐再启动，而不是直接拒绝
         if opts.get("autoFix", True) and len(ready["missing"]) <= 40:
             try:
-                _repair_files(vid, with_assets=False)
+                _repair_files(vid, with_assets=False, cfg=cfg)
                 ready = check_ready(vid, cfg)
                 if not ready["ready"]:
-                    _repair_files(vid, with_assets=True)
+                    _repair_files(vid, with_assets=True, cfg=cfg)
                     ready = check_ready(vid, cfg)
             except Exception:  # noqa: BLE001
                 pass

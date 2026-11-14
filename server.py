@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import re
 import shutil
@@ -1353,7 +1354,18 @@ def api_update_check():
 # 更新日志（新版本发版时往列表头部追加一条）
 CHANGELOG: List[Dict[str, Any]] = [
     {
-        "version": "1.2.3",
+        "version": "1.3.0",
+        "date": "2026-11-14",
+        "title": "开得更快，还能从任意文件夹直接开 MC",
+        "items": [
+            "启动提速：开场动画压缩、Java 探测结果落盘缓存并在后台预热，从双击到能点控制在 5 秒内",
+            "同一台电脑重复双击不会再开出第二个窗口，会自动切回已经开着的启动器",
+            "新增「文件夹快速启动」：填一个 .minecraft 文件夹，里面的版本直接列出来启动；空文件夹自动新建并下载原版（直连官方源）；带 mod 的整合也能直接开，内存全自动",
+            "版本号升级 1.3.0；使用指南新增存档地图、文件夹快速启动、界面与窗口说明，删掉了已下线的开发空间介绍",
+        ],
+    },
+    {
+        "version": "1.3.0",
         "date": "2026-10-30",
         "title": "游戏目录跟着启动器走，版本库也补全了",
         "items": [
@@ -1820,26 +1832,214 @@ def api_migrate():
     return ok(task.to_dict())
 
 
+def _pick_dir_native(title: str = "选择文件夹") -> str:
+    """Win32 原生选目录框。不走 tkinter：Tk 会先建一个空根窗口，闪一下白框。"""
+    import ctypes
+    from ctypes import wintypes
+
+    shell32 = ctypes.windll.shell32
+    ole32 = ctypes.windll.ole32
+    try:
+        ole32.CoInitialize(None)
+    except Exception:
+        pass
+
+    class BROWSEINFOW(ctypes.Structure):
+        _fields_ = [("hwndOwner", wintypes.HWND),
+                    ("pidlRoot", ctypes.c_void_p),
+                    ("pszDisplayName", wintypes.LPWSTR),
+                    ("lpszTitle", wintypes.LPCWSTR),
+                    ("ulFlags", wintypes.UINT),
+                    ("lpfn", ctypes.c_void_p),
+                    ("lParam", wintypes.LPARAM),
+                    ("iImage", ctypes.c_int)]
+
+    BIF_RETURNONLYFSDIRS = 0x0001
+    BIF_NEWDIALOGSTYLE = 0x0040
+    name_buf = ctypes.create_unicode_buffer(260)
+    bi = BROWSEINFOW(None, None, name_buf, title,
+                     BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE, None, 0, 0)
+    pidl = shell32.SHBrowseForFolderW(ctypes.byref(bi))
+    if not pidl:
+        return ""
+    path_buf = ctypes.create_unicode_buffer(1024)
+    shell32.SHGetPathFromIDListW(pidl, path_buf)
+    try:
+        ole32.CoTaskMemFree(pidl)
+    except Exception:
+        pass
+    return path_buf.value or ""
+
+
 @app.get("/api/pick/dir")
 def api_pick_dir():
-    """弹出系统目录选择框（Windows 原生 filedialog）。"""
+    """弹出系统目录选择框。"""
+    path = ""
     try:
-        import tkinter  # noqa: F401
+        path = _pick_dir_native("选择文件夹")
+    except Exception:  # noqa: BLE001
+        path = ""
+    if path:
+        return ok(path)
+    # 原生框拿不到（极少数系统）再退回 tkinter
+    try:
+        import tkinter
         from tkinter import filedialog
         cfg = core.load()
         root = tkinter.Tk()
         root.withdraw()
-        root.attributes("-topmost", True)
-        path = filedialog.askdirectory(initialdir=core.game_dir(cfg), title="选择游戏目录")
+        p2 = filedialog.askdirectory(initialdir=core.game_dir(cfg),
+                                     title="选择游戏目录")
         try:
             root.destroy()
         except Exception:
             pass
-        if path:
-            return ok(path)
-        return err("已取消")
+        return ok(p2) if p2 else err("已取消")
     except Exception as e:  # noqa: BLE001
         return err(f"无法打开选择框，请手动填写路径（{e}）")
+
+
+# ==================================================================
+# 文件夹快速启动：给一个 .minecraft（或它上一级），扫描 / 下原版 / 直接开
+# ==================================================================
+
+def _folder_cfg(path: str) -> Dict[str, Any]:
+    """把用户填的路径变成一份「游戏目录指向它」的配置副本（不动全局设置）。"""
+    cfg = dict(core.load())
+    cfg["gameDir"] = path
+    return cfg
+
+
+def _resolve_mc_dir(path: str) -> tuple:
+    """返回 (真正的 .minecraft 路径, 是否已存在)。"""
+    raw = (path or "").strip().strip('"').strip("'")
+    if not raw:
+        return "", False
+    p = os.path.abspath(os.path.expanduser(raw))
+    base = os.path.basename(p.rstrip("\\/")).lower()
+    if base == ".minecraft":
+        return p, os.path.isdir(p)
+    if os.path.isdir(os.path.join(p, "versions")):
+        return p, True                      # 本身就是一个 .minecraft
+    sub = os.path.join(p, ".minecraft")
+    if os.path.isdir(sub):
+        return sub, True
+    return sub, False                       # 待新建
+
+
+@app.post("/api/folder/scan")
+def api_folder_scan():
+    body = request.get_json(force=True, silent=True) or {}
+    mc, exists = _resolve_mc_dir(body.get("dir", ""))
+    if not mc:
+        return err("请先填一个文件夹路径")
+    data = {"dir": mc, "exists": exists, "versions": [], "mods": [], "count": 0}
+    if not exists:
+        return ok(data)
+
+    vdir = os.path.join(mc, "versions")
+    out: List[Dict[str, Any]] = []
+    if os.path.isdir(vdir):
+        for name in os.listdir(vdir):
+            d = os.path.join(vdir, name)
+            jp = os.path.join(d, name + ".json")
+            if not (os.path.isdir(d) and os.path.isfile(jp)):
+                continue
+            vj: Dict[str, Any] = {}
+            try:
+                with open(jp, "r", encoding="utf-8-sig") as f:
+                    vj = json.load(f)
+            except Exception:  # noqa: BLE001
+                vj = {}
+            loader = ""
+            try:
+                loader = game.detect_loader(vj) or ""
+            except Exception:  # noqa: BLE001
+                loader = ""
+            if not loader:
+                low = name.lower()
+                for tag, key in (("neoforge", "neoforge"), ("forge", "forge"),
+                                 ("fabric", "fabric"), ("quilt", "quilt"),
+                                 ("optifine", "optifine")):
+                    if key in low:
+                        loader = tag
+                        break
+            try:
+                mtime = os.path.getmtime(jp)
+            except OSError:
+                mtime = 0
+            out.append({
+                "id": vj.get("id") or name,
+                "folder": name,
+                "type": vj.get("type") or "",
+                "loader": loader,
+                "jar": os.path.isfile(os.path.join(d, name + ".jar")),
+                "mtime": int(mtime),
+            })
+    out.sort(key=lambda x: -x["mtime"])
+    mods: List[str] = []
+    mdir = os.path.join(mc, "mods")
+    if os.path.isdir(mdir):
+        try:
+            mods = sorted([f for f in os.listdir(mdir)
+                           if f.lower().endswith((".jar", ".litemod", ".zip"))])
+        except OSError:
+            mods = []
+    data.update(versions=out, count=len(out), mods=mods[:30], modCount=len(mods))
+    return ok(data)
+
+
+@app.post("/api/folder/install")
+def api_folder_install():
+    """只下原版（官方源），直接装进指定文件夹。"""
+    body = request.get_json(force=True, silent=True) or {}
+    mc, _exists = _resolve_mc_dir(body.get("dir", ""))
+    ver = (body.get("version") or "").strip()
+    if not mc:
+        return err("请先填一个文件夹路径")
+    if not ver:
+        return err("请选择要下载的版本")
+    try:
+        os.makedirs(mc, exist_ok=True)
+    except Exception as e:  # noqa: BLE001
+        return err("这个路径建不了文件夹：%s" % e)
+    cfg = _folder_cfg(mc)
+
+    def _worker(task):
+        vmod.install_version(ver, task, True, cfg)
+        task.target = ver
+
+    task = core.tasks.create("install", "下载原版 %s" % ver, ver)
+    core.tasks.start(task, _worker)
+    return ok({"task": task.to_dict(), "dir": mc})
+
+
+@app.post("/api/folder/launch")
+def api_folder_launch():
+    """直接启动某个文件夹里的版本：内存完全自动，不让改。"""
+    body = request.get_json(force=True, silent=True) or {}
+    mc, exists = _resolve_mc_dir(body.get("dir", ""))
+    vid = (body.get("version") or "").strip()
+    if not mc or not exists:
+        return err("这个文件夹不存在，先检测一下路径")
+    if not vid:
+        return err("请选择要启动的版本")
+    cfg = _folder_cfg(mc)
+    opts = {
+        "autoMem": True,          # 只看启动那一刻的可用内存，界面不给改
+        "autoFix": True,
+        "width": body.get("width") or 1280,
+        "height": body.get("height") or 800,
+    }
+    try:
+        r = game.launch(vid, (body.get("account") or "").strip(), cfg, opts)
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        return err("启动过程出错：%s: %s" % (type(e).__name__, e), code=500)
+    if not r.get("ok"):
+        extra = {k: v for k, v in r.items() if k not in ("ok", "msg")}
+        return err(str(r.get("msg") or "启动失败"), **extra)
+    return ok(r)
 
 
 @app.post("/api/open/folder")
@@ -1905,6 +2105,15 @@ def find_free_port(start: int = 18920, tries: int = 40) -> int:
     raise RuntimeError("找不到可用端口")
 
 
+def _warm_java_cache() -> None:
+    """窗口还在初始化时把 Java 探测跑完，页面打开就不用等这一两秒。"""
+    try:
+        core.list_java()
+        core.scan_bundled_java()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def start_server(port: int = 0) -> Dict[str, Any]:
     """启动 Flask（后台线程），返回 {"port": ...}"""
     port = port or find_free_port()
@@ -1913,6 +2122,7 @@ def start_server(port: int = 0) -> Dict[str, Any]:
                                threaded=True, use_reloader=False),
         daemon=True,
     ).start()
+    threading.Thread(target=_warm_java_cache, daemon=True).start()
     return {"port": port, "url": f"http://127.0.0.1:{port}"}
 
 

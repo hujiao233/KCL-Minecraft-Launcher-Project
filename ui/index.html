@@ -756,6 +756,20 @@ input[type=range]::-webkit-slider-thumb {
 }
 .update-panel > .head-actions { display: flex; gap: 8px; flex: none; }
 
+/* ---------- 下载页：文件夹快速启动 ---------- */
+.qs-card{border:1px solid rgba(47,143,196,.22);border-radius:14px;padding:13px 15px;
+  margin:0 0 12px;background:linear-gradient(180deg,#f6fbff,#eef7fe)}
+.qs-card b{font-size:13.5px;color:var(--deep)}
+.qs-sub{font-size:11.5px;color:#5b7f95;line-height:1.65;margin-top:4px}
+.qs-row{display:flex;gap:8px;align-items:center;margin-top:10px}
+.qs-row .input{flex:1}
+.qs-line{display:flex;gap:8px;align-items:center;margin-top:9px;flex-wrap:wrap}
+.qs-line .k{font-size:11.5px;color:#5b7f95;white-space:nowrap}
+.qs-line .select{min-width:190px;max-width:330px}
+.qs-msg{font-size:11.5px;color:#5b7f95;margin-top:8px;min-height:15px}
+.qs-msg.ok{color:#1f8a5b}
+.qs-msg.bad{color:#c0413a}
+
 /* ---------- 指南页 ---------- */
 .guide-wrap { max-width: 940px; margin: 0 auto; }
 .guide-head {
@@ -856,7 +870,7 @@ body.booting .app { opacity: 0; }
 .splash-inner { display: flex; flex-direction: column; align-items: center; }
 .splash-logo { width: 156px; height: 156px;
   filter: drop-shadow(0 12px 22px rgba(31,110,160,.28));
-  animation: splashDrop 1s cubic-bezier(.2,1.5,.45,1) both; }
+  animation: splashDrop .52s cubic-bezier(.2,1.5,.45,1) both; }
 @keyframes splashDrop {
   0%   { transform: translateY(-78vh) rotate(-30deg) scale(.55); opacity: 0; }
   55%  { opacity: 1; }
@@ -872,24 +886,24 @@ body.booting .app { opacity: 0; }
 .splash-line > span::after { content: ""; position: absolute; inset: -25% -6%;
   background: linear-gradient(105deg, rgba(255,255,255,0) 38%, rgba(255,255,255,.95) 50%, rgba(255,255,255,0) 62%);
   transform: translateX(-110%); }
-#splashL1 { animation: slideIn .62s cubic-bezier(.15,.8,.2,1) both .95s,
-                        slideOutL .55s cubic-bezier(.6,0,.9,.4) both 2.15s; }
+#splashL1 { animation: slideIn .34s cubic-bezier(.15,.8,.2,1) both .1s,
+                        slideOutL .3s cubic-bezier(.6,0,.9,.4) both .62s; }
 #splashL2 { color: var(--ice-3, #2f8fc4); font-size: clamp(21px, 3.4vw, 37px);
-  animation: slideIn .62s cubic-bezier(.15,.8,.2,1) both 2.45s; }
-#splashL1 > span::after { animation: shine .85s ease-in-out 1.32s 1; }
-#splashL2 > span::after { animation: shine .85s ease-in-out 2.85s 1; }
+  animation: slideIn .34s cubic-bezier(.15,.8,.2,1) both .74s; }
+#splashL1 > span::after { animation: shine .5s ease-in-out .16s 1; }
+#splashL2 > span::after { animation: shine .5s ease-in-out .8s 1; }
 @keyframes slideIn { from { transform: translateX(70px); opacity: 0; }
                      to   { transform: translateX(0); opacity: 1; } }
 @keyframes slideOutL { from { transform: translateX(0); opacity: 1; }
                        to   { transform: translateX(-70px); opacity: 0; } }
 @keyframes shine { from { transform: translateX(-110%); } to { transform: translateX(110%); } }
 .splash-sub { margin-top: 16px; font-size: clamp(11px, 1.4vw, 14px); color: #5b7f95;
-  letter-spacing: 1px; animation: fadeUp .7s ease both 3.05s; }
+  letter-spacing: 1px; animation: fadeUp .4s ease both .9s; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); }
                     to   { opacity: 1; transform: none; } }
 .splash-bar { margin-top: 24px; width: 180px; height: 4px; border-radius: 999px;
   background: rgba(47,143,196,.18); overflow: hidden;
-  animation: fadeUp .5s ease both 1s; }
+  animation: fadeUp .3s ease both .12s; }
 .splash-bar i { display: block; height: 100%; width: 40%; border-radius: 999px;
   background: linear-gradient(90deg, #8fd8ff, #2f8fc4);
   animation: barRun 1.1s ease-in-out infinite; }
@@ -1349,6 +1363,32 @@ body.booting .app { opacity: 0; }
 
         <div class="tab-body" id="tab-download" hidden>
           <div id="dlListView">
+            <!-- 文件夹快速启动：下原版 / 直接开已有文件夹 -->
+            <div class="qs-card" id="qsCard">
+              <b>文件夹快速启动</b>
+              <div class="qs-sub">
+                填一个 .minecraft 文件夹（或它的上一级）：里面有版本就列出来直接启动；没有就自动新建，把原版装进去。
+                带 mod 的整合也能直接开；这里的内存按启动那一刻的可用内存自动分配，不给手动调。
+              </div>
+              <div class="qs-row">
+                <input class="input" id="qsDir" placeholder="例如 D:\MC（会使用或新建 D:\MC\.minecraft）">
+                <button class="btn ghost sm" id="qsPick">浏览…</button>
+                <button class="btn primary sm" id="qsScan">检测</button>
+              </div>
+              <div class="qs-line" id="qsVerRow" hidden>
+                <span class="k">这个文件夹里</span>
+                <select class="select" id="qsVer"></select>
+                <button class="btn primary sm" id="qsLaunch">启动</button>
+                <span class="k" id="qsModInfo"></span>
+              </div>
+              <div class="qs-line" id="qsDlRow" hidden>
+                <span class="k">下载原版</span>
+                <select class="select" id="qsMcSel"></select>
+                <button class="btn ghost sm" id="qsInstall">下到这个文件夹</button>
+              </div>
+              <div class="qs-msg" id="qsMsg"></div>
+            </div>
+
             <div class="dl-toolbar">
               <input class="input search" id="searchVer" placeholder="搜索版本号，如 1.20.1">
               <div class="filter-group" id="catChips">
@@ -3402,6 +3442,133 @@ body.booting .app { opacity: 0; }
   }
 
   // ---------------- 初始化 ----------------
+  // ---------------- 下载页：文件夹快速启动 ----------------
+  (function initQuickStart() {
+    const dirEl = $("#qsDir");
+    if (!dirEl) return;
+    const LS_KEY = "kcl_qs_dir";
+    const msgEl = () => $("#qsMsg");
+    const say = (text, cls) => {
+      const el = msgEl();
+      el.textContent = text || "";
+      el.className = "qs-msg" + (cls ? " " + cls : "");
+    };
+    let onlineFilled = false;
+
+    try { dirEl.value = localStorage.getItem(LS_KEY) || ""; } catch (e) {}
+
+    const dayText = (ts) => {
+      if (!ts) return "";
+      const d = new Date(ts * 1000);
+      return (d.getMonth() + 1) + "/" + d.getDate();
+    };
+
+    async function fillOnline(force) {
+      if (onlineFilled && !force) return;
+      const sel = $("#qsMcSel");
+      if (!sel) return;
+      sel.innerHTML = '<option value="">读取版本列表…</option>';
+      const r = await api("/api/versions/online?cat=release");
+      if (!r.ok) { sel.innerHTML = '<option value="">列表读取失败</option>'; return; }
+      const list = (r.data && r.data.list) || [];
+      sel.innerHTML = list.map((v) =>
+        `<option value="${esc(v.id)}">${esc(v.id)}${v.installed ? " · 本机已装" : ""}</option>`).join("");
+      onlineFilled = true;
+    }
+
+    async function scan() {
+      const p = dirEl.value.trim();
+      if (!p) { say("先填或选一个文件夹", "bad"); return; }
+      try { localStorage.setItem(LS_KEY, p); } catch (e) {}
+      say("正在检测…");
+      const r = await post("/api/folder/scan", { dir: p });
+      if (!r.ok) { say(r.msg || "检测失败", "bad"); return; }
+      const d = r.data || {};
+      $("#qsDlRow").hidden = false;
+      fillOnline(false);
+      if (!d.exists) {
+        $("#qsVerRow").hidden = true;
+        say("这里还没有 .minecraft：在下面选个原版下进去，会自动新建文件夹。");
+        return;
+      }
+      const vs = d.versions || [];
+      if (!vs.length) {
+        $("#qsVerRow").hidden = true;
+        say("文件夹里没有可启动的版本（缺 versions/<名字>/<名字>.json），可以下个原版进去。");
+        return;
+      }
+      $("#qsVerRow").hidden = false;
+      $("#qsVer").innerHTML = vs.map((v) =>
+        `<option value="${esc(v.folder)}">${esc(v.id)}` +
+        (v.loader ? " · " + esc(v.loader) : "") +
+        (v.jar ? "" : " · 缺 jar") +
+        (v.type && v.type !== "release" ? " · " + esc(v.type) : "") +
+        `</option>`).join("");
+      $("#qsModInfo").textContent = (d.modCount || 0) + " 个模组文件";
+      say("检测到 " + vs.length + " 个版本 · " + d.dir, "ok");
+    }
+
+    async function launch() {
+      const p = dirEl.value.trim();
+      const vid = $("#qsVer").value;
+      if (!p) { say("先填文件夹", "bad"); return; }
+      if (!vid) { say("先选一个版本", "bad"); return; }
+      const btn = $("#qsLaunch");
+      btn.disabled = true;
+      say("正在启动 " + vid + " …");
+      try {
+        const r = await post("/api/folder/launch", { dir: p, version: vid });
+        if (!r.ok) { say(r.msg || "启动失败", "bad"); return; }
+        const mem = (r.data && r.data.memory) || (r.data && r.data.meta && r.data.meta.memory);
+        say("已启动 " + vid + (mem ? " · 内存 " + fmtMem(mem) : " · 内存自动") + "，看游戏窗口吧。", "ok");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    let pollTimer = null;
+    async function install() {
+      const p = dirEl.value.trim();
+      const ver = $("#qsMcSel").value;
+      if (!p) { say("先填文件夹", "bad"); return; }
+      if (!ver) { say("先选一个原版", "bad"); return; }
+      say("开始下载 " + ver + " …");
+      const r = await post("/api/folder/install", { dir: p, version: ver });
+      if (!r.ok) { say(r.msg || "下载失败", "bad"); return; }
+      const tid = r.data && r.data.task && r.data.task.id;
+      if (!tid) { say("已开始下载，进度见「下载任务」"); return; }
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        const q = await api("/api/tasks/" + encodeURIComponent(tid));
+        if (!q.ok) return;
+        const t = q.data || {};
+        const pct = t.total ? Math.round((t.done || 0) / t.total * 100) : 0;
+        if (t.state === "running") {
+          say("下载 " + ver + "： " + pct + "% · " + (t.message || ""), "");
+          return;
+        }
+        clearInterval(pollTimer);
+        pollTimer = null;
+        if (t.state === "success") {
+          say(ver + " 已下载到 " + (r.data.dir || p) + "，下面选它就能启动。", "ok");
+          scan();
+        } else {
+          say("下载没完成：" + (t.error || t.message || "未知原因"), "bad");
+        }
+      }, 900);
+    }
+
+    $("#qsScan").addEventListener("click", scan);
+    $("#qsLaunch").addEventListener("click", launch);
+    $("#qsInstall").addEventListener("click", install);
+    $("#qsDir").addEventListener("keydown", (e) => { if (e.key === "Enter") scan(); });
+    $("#qsPick").addEventListener("click", async () => {
+      const r = await api("/api/pick/dir");
+      if (r.ok && r.data) { dirEl.value = r.data; scan(); }
+      else if (r.msg && r.msg !== "已取消") say(r.msg, "bad");
+    });
+  })();
+
   async function boot() {
     _dlgBind();   // 内置弹窗按钮先绑好
     const hello = await api("/api/hello");
@@ -3420,9 +3587,10 @@ body.booting .app { opacity: 0; }
       Object.keys(_lz).forEach((p) => lzApplyPage(p));
       lzApplyPage(state.page || "home");
     } catch (e) {}
-    await loadAccounts();
-    await loadJava();
+    // Java 列表和账号互不依赖，并行拉，省掉一次串行等待
+    await Promise.all([loadAccounts(), loadJava()]);
     await loadInstalled();
+    try { if (window.__splashFinish) window.__splashFinish(); } catch (e) {}
     loadOnline(false);
     setInterval(pollStatus, 1200);
     setInterval(pollTasks, 1000);
@@ -5626,43 +5794,53 @@ body.booting .app { opacity: 0; }
       ],
     },
     {
-      id: "findsrv", title: { zh: "找服务器", en: "Find Servers" },
+      id: "map", title: { zh: "存档地图", en: "World Map" },
       items: [
-        { q: { zh: "这里的服务器是从哪来的？", en: "Where does this list come from?" },
-          a: { zh: "来自脆冰网站服务端的「MC 服务器宣传」，服主自己在网站上发布，启动器只负责展示和帮你申请加入，不托管、不代跑任何服务器。\n前提是：设置 →「网站与连接」里打开外界连接，并填好网站地址。",
-               en: "From the Cuibing site's server promotions. Server owners post there; the launcher only shows them and forwards your join request — it never hosts anything.\nNeeds: Settings > Website & Network, enable network and fill in the site URL." } },
-        { q: { zh: "怎么筛出我想要的服？", en: "How do I filter?" },
-          a: { zh: "顶部四个框：关键词（名称 / 宣传语）、类型（如 生存）、MC 版本、mod 关键词；勾「只看 markon」只留 markon 服。\n点「只看 KCL 已装版本」，会自动带上你本机装好的版本，只显示能直接进的服。点「全部」清空条件。",
-               en: "Four boxes: keyword (name/slogan), type (e.g. survival), MC version, mod keyword. Check \"markon only\" to narrow it down.\n\"Only my installed versions\" auto-fills the MC versions you have, so every result is joinable right away. \"All\" clears the filters." } },
-        { q: { zh: "点了「我要加入」之后呢？", en: "What happens after \"Join\"?" },
-          a: { zh: "会向服主提交一条加入申请，服主同意后卡片变成「已加入 · 看地址」，点开就能拿到地址直接连。\n状态徽章：等待服主同意 / 已加入 / 已被拒绝。被拒绝也不会重复刷屏，重新搜索即可刷新状态。",
-               en: "A join request is sent to the owner. Once approved, the card becomes \"Joined · Show address\" and you can connect.\nBadges: pending / approved / rejected. Rejected requests are not spammed again; just search again to refresh." } },
-        { q: { zh: "显示「已关闭与外界连接」或连不上？", en: "It says network is off or cannot connect." },
-          a: { zh: "前者是你主动关了开关：去 设置 →「网站与连接」勾掉「关闭外界连接」即可。\n后者一般是网站地址填错或网站服务端没开；地址支持本机调试用的 http://127.0.0.1:8756 这种。\n无论哪种，都不影响离线启动游戏。",
-               en: "The first means you turned it off: Settings > Website & Network, uncheck \"Disable network\".\nThe second usually means a wrong URL or the site server is down; local URLs like http://127.0.0.1:8756 work too.\nEither way, launching games offline is unaffected." } },
-        { q: { zh: "我想宣传自己的服务器，怎么发？", en: "How do I promote my own server?" },
-          a: { zh: "启动器里只能找服、不能发布。打开脆冰网站 →「宣传我的 MC 服务器」，填名称、类型、版本、宣传语和简介，可以配宣传图，发布后启动器这边搜得到。",
-               en: "The launcher can only browse. Open the Cuibing site > \"Promote my MC server\", fill in name, type, version, slogan and intro (image optional). It shows up here after publishing." } },
+        { q: { zh: "地图页能干什么？", en: "What does the Map page do?" },
+          a: { zh: "两种模式：\n· 实时存档地图 —— 选一个存档，边玩边把跑过的区块画出来，存档越玩地图越大；\n· SeedMap 种子地图 —— 输入种子号（支持文字，如「亦闲君」）和 MC 版本，直接算出整个世界的群系分布。\n两个模式都能切主世界 / 下界 / 末地，都能拖动、滚轮缩放、双击放标点。",
+               en: "Two modes: live map (explored chunks are drawn as you play) and SeedMap (enter a seed + MC version to compute the whole world's biomes).\nBoth support Overworld / Nether / End, drag, wheel zoom and double-click markers." } },
+        { q: { zh: "为什么 SeedMap 能算得这么准？", en: "Why is SeedMap accurate?" },
+          a: { zh: "内置了开源库 cubiomes 的精确算法：村庄、沙漠神殿、海底神殿、要塞（128 个全列出）、史莱姆区块都按你输入的种子逐个算，不是猜的。不同 MC 版本的种子算法不一样，所以选对版本很重要。",
+               en: "It embeds the cubiomes library: villages, temples, strongholds (all 128) and slime chunks are computed exactly from your seed. Pick the right MC version — seeds differ per version." } },
+        { q: { zh: "实时地图的「学习进度」是什么？", en: "What is the learning progress?" },
+          a: { zh: "游戏跑的时候，启动器每隔几秒读一次新生成的区块并记下来（进度条会涨）。关掉游戏再打开地图，已学的区块还在；点「清空」可以重画。",
+               en: "While the game runs, the launcher reads newly generated chunks every few seconds and remembers them. Closing the game keeps the map; Clear redraws from scratch." } },
       ],
     },
     {
-      id: "devspace", title: { zh: "开发空间", en: "Dev Space" },
+      id: "quickstart", title: { zh: "文件夹快速启动", en: "Quick Start" },
       items: [
-        { q: { zh: "开发空间是干什么的？", en: "What is Dev Space?" },
-          a: { zh: "「开发者」页最下面那块：一个直接和开发团队对话的留言板。写想法、报问题、提建议都行，发布后下面立刻能看到自己和别人的留言。\n需要先在 设置 →「网站与连接」里连上网站，第一次发布时会让你填个昵称。",
-               en: "The panel at the bottom of the Developer page: a board for talking to the dev team — ideas, bug reports, suggestions.\nRequires the site connection in Settings > Website & Network; you will be asked for a nickname on your first post." } },
-        { q: { zh: "怎么发到我加入的私人空间？", en: "How do I post to my private space?" },
-          a: { zh: "发布按钮左边的下拉里选「发布到私人空间：xxx」，列表来自你创建或已加入的合作空间（在网站上加入后启动器才会列出）。\n选私人空间时会多出一个「同时发到开发空间」的勾选，默认勾上；只想发一处就取消它。\n下拉右边「刷新空间」可以重新拉取最新列表。",
-               en: "Pick \"Post to private space: xxx\" in the dropdown left of the Post button; the list comes from co-op spaces you created or joined (join on the site first).\nA \"also post to Dev Space\" checkbox appears for private targets and is on by default — uncheck it to post in one place only.\n\"Refresh spaces\" reloads the list." } },
-        { q: { zh: "昵称一定要填吗？能改吗？", en: "Is the nickname required? Can I change it?" },
-          a: { zh: "要填，否则分不清是谁发的；填一次就记住了，之后直接能发。\n想换就在「开发者」页昵称提示处改，或清掉本地数据重填。",
-               en: "Yes, otherwise posts cannot be attributed. It is remembered after the first time.\nChange it at the nickname hint on the Developer page, or clear local data and re-enter." } },
-        { q: { zh: "能发图片或附件吗？", en: "Can I attach images or files?" },
-          a: { zh: "开发空间目前只发文字：标题可留空，正文最多 20000 字。\n要分享模组、整合包这类文件，请到网站上的资源区上传，再回来把链接贴到留言里。",
-               en: "Dev Space is text only: the title is optional, the body caps at 20000 characters.\nTo share mods or modpacks, upload them in the site's resource area and paste the link here." } },
-        { q: { zh: "关掉外界连接会怎样？", en: "What if network is disabled?" },
-          a: { zh: "开发空间整块会显示「已关闭与外界连接」并不再联网，其余功能完全不受影响，离线照常启动游戏。\n想重新用，去 设置 →「网站与连接」打开开关。",
-               en: "The panel shows \"Network disabled\" and stops connecting; everything else keeps working and you can still launch offline.\nRe-enable it in Settings > Website & Network." } },
+        { q: { zh: "「文件夹快速启动」怎么用？", en: "How does folder Quick Start work?" },
+          a: { zh: "「版本」页 →「下载版本」最上面的卡片。填一个 .minecraft 文件夹（填它的上一级也行）：\n· 里面已经有版本 → 列出来选一个直接启动；\n· 没有 → 自动新建文件夹，选个原版下进去。\n带 mod 的整合文件夹同样能直接开，不用先导入。",
+               en: "The card on top of Versions > Download. Point it at a .minecraft (or its parent folder): existing versions are listed to launch right away; empty folders get a vanilla version downloaded in.\nModded folders work too — no import needed." } },
+        { q: { zh: "从这里启动，内存怎么算？", en: "How is memory handled here?" },
+          a: { zh: "完全自动、不可手动干预：启动那一刻按本机真正可用的内存算出最合适的值（和主页的「实时自动」同一套逻辑，还会给系统留余量）。想手动指定内存，请回主页用滑块启动。",
+               en: "Fully automatic and not adjustable here: memory is computed from the RAM actually free at launch (same live-auto logic as Home). For a manual value, launch from Home instead." } },
+        { q: { zh: "只能启动原版吗？", en: "Vanilla only?" },
+          a: { zh: "下载只提供原版（直连 Mojang 官方源，不下任何 mod）；但启动不限制——文件夹里检测到的 Forge / Fabric / NeoForge 版本都能选来启动。",
+               en: "Downloads are vanilla only (straight from Mojang, no mods). Launching is not restricted: detected Forge / Fabric / NeoForge versions in the folder can all be launched." } },
+      ],
+    },
+    {
+      id: "findsrv", title: { zh: "找服务器（暂未开放）", en: "Servers (Coming Later)" },
+      items: [
+        { q: { zh: "找服务器页怎么是空的？", en: "Why is the Servers page empty?" },
+          a: { zh: "这个功能还没有做完，页面上盖了一层「暂未制作完成」。侧栏默认收起了它，想看随时在 设置 →「侧栏导航」里点 👁 打开。做好了会第一时间放开。",
+               en: "The feature is not finished yet — the page shows a placeholder. It is hidden in the sidebar by default; toggle it in Settings > Sidebar. It will return when ready." } },
+      ],
+    },
+    {
+      id: "look", title: { zh: "界面与窗口", en: "Interface & Window" },
+      items: [
+        { q: { zh: "侧栏能自己排吗？", en: "Can I rearrange the sidebar?" },
+          a: { zh: "可以。设置 →「侧栏导航」：拖行调整顺序、点 👁 隐藏或显示某一页（主页和设置锁定不能藏，防止找不到入口）。侧栏按钮本身也能直接拖动排序，布局会自动保存。",
+               en: "Yes. Settings > Sidebar: drag rows to reorder, use the eye icon to hide/show pages (Home and Settings are locked). Sidebar buttons are drag-sortable too; layout is saved automatically." } },
+        { q: { zh: "窗口大小能改吗？", en: "Can the window be resized?" },
+          a: { zh: "窗口是固定尺寸的：不能拉伸、不能最大化/全屏（双击标题栏、Win+↑ 都被挡住），但可以按住顶栏随意拖动。界面内容会随窗口自适应。游戏窗口大小在设置或版本设置里另外调。",
+               en: "The window has a fixed size: no resize, no maximize/fullscreen, but the top bar can be dragged freely. Content adapts automatically. The game window size is separate (Settings or per-version)." } },
+        { q: { zh: "还能换主题吗？", en: "Themes still available?" },
+          a: { zh: "在。设置 →「语言与外观」：5 套预设 + 自定义主题色 + 标题位置，还能保存成自己的预设。想深度魔改就直接改 ui/index.html。",
+               en: "Yes. Settings > Language & Look: 5 presets, custom accent, title alignment and saveable presets. For deep customization, edit ui/index.html directly." } },
       ],
     },
     {
@@ -7935,17 +8113,21 @@ body.booting .app { opacity: 0; }
     const sp = document.getElementById("splash");
     if (!sp) { document.body.classList.remove("booting"); return; }
     let done = false;
+    const t0 = performance.now();
     const finish = () => {
       if (done) return;
+      const left = 900 - (performance.now() - t0);   // 至少让 logo 落下来
+      if (left > 0) { setTimeout(finish, left); return; }
       done = true;
       sp.classList.add("done");
       document.body.classList.remove("booting");
       setTimeout(() => { try { applyUiScale(); } catch (e) {} }, 0);
       setTimeout(() => { try { sp.remove(); } catch (e) {} }, 700);
     };
+    window.__splashFinish = finish;          // boot 准备完就提前收场
     sp.addEventListener("click", finish);
     window.addEventListener("keydown", finish, { once: true });
-    setTimeout(finish, 4300);   // 动画播完自动进入界面
+    setTimeout(finish, 2200);                // 兜底：接口都卡住也别一直挡着
   }
 
   // ---------------- 启动 ----------------

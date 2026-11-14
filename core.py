@@ -27,7 +27,7 @@ import requests
 # ==================================================================
 
 APP_NAME = "CuibingLauncher"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.3.0"
 
 # 启动器本体数据目录：%APPDATA%/CuibingLauncher
 ROOT_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME)
@@ -1046,6 +1046,32 @@ def download_all(
 # ==================================================================
 
 _cache: Optional[List[Dict[str, Any]]] = None
+# Java 探测要跑十几次 `java -version`，冷启动能拖到 2 秒。把结果落盘，
+# 下次开机直接读文件（几百字节），探测放到后台慢慢刷新。
+_JAVA_CACHE_FILE = os.path.join(ROOT_DIR, "java_cache.json")
+_JAVA_CACHE_TTL = 7 * 24 * 3600
+
+
+def _java_cache_read() -> Optional[List[Dict[str, Any]]]:
+    try:
+        with open(_JAVA_CACHE_FILE, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        if time.time() - float(d.get("ts") or 0) > _JAVA_CACHE_TTL:
+            return None
+        lst = d.get("java")
+        return lst if isinstance(lst, list) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _java_cache_write(lst: List[Dict[str, Any]]) -> None:
+    try:
+        tmp = _JAVA_CACHE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"ts": time.time(), "java": lst}, f, ensure_ascii=False)
+        os.replace(tmp, _JAVA_CACHE_FILE)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _scan_roots() -> List[str]:
@@ -1216,8 +1242,13 @@ def _java_score(info: Dict[str, Any]) -> Tuple[int, int, int, int]:
 def list_java(force: bool = False) -> List[Dict[str, Any]]:
     """列出本机所有可用 Java，按推荐度排序（64 位 + 常用主版本优先）。"""
     global _cache
-    if _cache and not force:
+    if _cache is not None and not force:
         return _cache
+    if not force:
+        disk = _java_cache_read()
+        if disk is not None:
+            _cache = disk
+            return disk
     out: List[Dict[str, Any]] = []
     seen_ver = set()
     for exe in _collect_java_exes():
@@ -1235,6 +1266,8 @@ def list_java(force: bool = False) -> List[Dict[str, Any]]:
         seen_ver.add(key)
         res.append(i)
     _cache = res
+    if not force:
+        _java_cache_write(res)
     return res
 
 
@@ -2173,10 +2206,20 @@ def _walk_java(root: str) -> List[str]:
     return found
 
 
-def scan_bundled_java() -> List[Dict[str, Any]]:
-    """扫描启动器自带的 Java（自动下载来的）。"""
+_bundled_cache: Dict[str, Any] = {"key": None, "list": []}
+
+
+def scan_bundled_java(force: bool = False) -> List[Dict[str, Any]]:
+    """扫描启动器自带的 Java（自动下载来的）。按目录 mtime 缓存，别每次问都重扫。"""
+    try:
+        key = (JAVA_DIR, os.path.getmtime(JAVA_DIR))
+    except OSError:
+        key = (JAVA_DIR, 0)
+    if not force and _bundled_cache.get("key") == key:
+        return _bundled_cache.get("list") or []
     out: List[Dict[str, Any]] = []
     if not os.path.isdir(JAVA_DIR):
+        _bundled_cache.update(key=key, list=[])
         return out
     for name in os.listdir(JAVA_DIR):
         d = os.path.join(JAVA_DIR, name)
@@ -2187,6 +2230,7 @@ def scan_bundled_java() -> List[Dict[str, Any]]:
             if info:
                 info["bundled"] = True
                 out.append(info)
+    _bundled_cache.update(key=key, list=out)
     return out
 
 

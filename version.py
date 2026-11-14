@@ -304,9 +304,10 @@ def online_counts(force: bool = False) -> Dict[str, int]:
 
 # ---------------- 版本 JSON ----------------
 
-def download_version_json(vid: str, version_url: str = "") -> str:
-    """下载版本 JSON 到本地，返回路径。"""
-    cfg = core.load()
+def download_version_json(vid: str, version_url: str = "",
+                          cfg: Dict[str, Any] | None = None) -> str:
+    """下载版本 JSON 到本地，返回路径。cfg 可指向另一个 .minecraft 文件夹。"""
+    cfg = cfg or core.load()
     src = get_source(cfg)
     dest = core.version_json_path(vid, cfg)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -342,12 +343,12 @@ def download_version_json(vid: str, version_url: str = "") -> str:
     return dest
 
 
-def read_version_json(vid: str) -> Dict[str, Any]:
+def read_version_json(vid: str, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """读取本地版本 JSON，不存在则尝试联网下载。"""
-    cfg = core.load()
+    cfg = cfg or core.load()
     p = core.version_json_path(vid, cfg)
     if not os.path.isfile(p):
-        download_version_json(vid)
+        download_version_json(vid, cfg=cfg)
     with open(p, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -364,13 +365,14 @@ def _merge_args(base: List[Any], extra: List[Any]) -> List[Any]:
     return out
 
 
-def resolve_version(vid: str) -> Dict[str, Any]:
+def resolve_version(vid: str, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """
     解析版本信息，处理 inheritsFrom 继承链。
     返回合并后的版本 dict，并附带 _id 字段。
+    cfg 给定别的游戏目录时，就从那个目录的 versions/ 里读。
     """
     def _load(cur: str) -> Dict[str, Any]:
-        return read_version_json(cur)
+        return read_version_json(cur, cfg)
 
     def _walk(cur: str) -> List[Dict[str, Any]]:
         chain = []
@@ -714,9 +716,13 @@ def collect_logging(vj: Dict[str, Any],
 
 # ---------------- 安装 ----------------
 
-def install_version(vid: str, task, with_assets: bool = True) -> None:
-    """完整安装一个版本：json -> jar -> libraries -> assets。"""
-    cfg = core.load()
+def install_version(vid: str, task, with_assets: bool = True,
+                    cfg: Dict[str, Any] | None = None) -> None:
+    """完整安装一个版本：json -> jar -> libraries -> assets。
+
+    cfg 传入别的游戏目录时，文件就装到那个 .minecraft 里。
+    """
+    cfg = cfg or core.load()
 
     def _check_cancel():
         if task.cancelled:
@@ -731,13 +737,13 @@ def install_version(vid: str, task, with_assets: bool = True) -> None:
     task.message = "获取版本信息…"
     _check_cancel()
     try:
-        read_version_json(vid)
+        read_version_json(vid, cfg)
     except Exception as e:  # noqa: BLE001
         task.error = f"版本信息获取失败：{e}"
         task.state = core.TaskState.FAILED
         return
 
-    vj = resolve_version(vid)
+    vj = resolve_version(vid, cfg)
 
     # 2. 汇总待下载文件
     task.message = "解析依赖清单…"
@@ -838,7 +844,7 @@ def extract_natives(vid: str, cfg: Dict[str, Any] | None = None) -> None:
     """把 natives jar 解压到版本目录，跳过 META-INF。"""
     import zipfile
     cfg = cfg or core.load()
-    vj = resolve_version(vid)
+    vj = resolve_version(vid, cfg)
     dest = core.natives_dir(vid, cfg)
     for jar in native_jars(vj, cfg):
         with zipfile.ZipFile(jar) as z:
