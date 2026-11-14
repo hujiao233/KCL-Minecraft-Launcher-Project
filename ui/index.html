@@ -390,7 +390,8 @@ input[type=range]::-webkit-slider-thumb {
 }
 .mem-quick { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--muted); }
 .mem-quick input[type=range] { width: 150px; }
-.mem-val { font-weight: 700; color: var(--ice-3); min-width: 74px; }
+.mem-val { font-weight: 700; color: var(--ice-3); min-width: 96px; white-space: nowrap;
+  text-align: right; font-variant-numeric: tabular-nums; }
 
 .status { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
@@ -666,7 +667,7 @@ input[type=range]::-webkit-slider-thumb {
 .settings .panel { margin-bottom: 0; }
 .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
 .form-row > label { width: 92px; flex: 0 0 92px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
-.form-row .mem-val { min-width: 76px; }
+.form-row .mem-val { min-width: 96px; }
 .form-row > label .req, .form-row > label .opt {
   display: inline-block; margin-left: 4px; padding: 0 4px; border-radius: 4px;
   font-size: 9.5px; font-weight: 700; line-height: 15px; vertical-align: 1px;
@@ -1183,8 +1184,8 @@ body.booting .app { opacity: 0; }
             <div class="launch-bar">
               <div class="mem-quick">
                 <label>内存</label>
-                <input type="range" id="memSlider" min="512" max="16384" step="512">
-                <span class="mem-val" id="memVal">4096 MB</span>
+                <input type="range" id="memSlider" min="512" max="32768" step="512">
+                <span class="mem-val" id="memVal">4 GB</span>
                 <button class="btn ghost xs" id="btnMemOpt" data-i18n="一键优化">一键优化</button>
               </div>
               <button class="btn launch" id="btnLaunch">
@@ -1635,8 +1636,8 @@ body.booting .app { opacity: 0; }
               MC 1.13 ~ 26.1+ 需要的 Java 8 / 17 / 21 / 25。</div>
             <div class="form-row">
               <label>内存分配</label>
-              <input type="range" id="memSlider2" min="512" max="16384" step="512" class="grow">
-              <span class="mem-val" id="memVal2">4096 MB</span>
+              <input type="range" id="memSlider2" min="512" max="32768" step="512" class="grow">
+              <span class="mem-val" id="memVal2">4 GB</span>
               <button class="btn ghost sm" id="btnMemOpt2" data-i18n="一键优化">一键优化</button>
             </div>
             <div class="hint" id="memHint"></div>
@@ -2250,6 +2251,13 @@ body.booting .app { opacity: 0; }
     if (!b) return "--";
     const mb = b / 1024 / 1024;
     return mb >= 1024 ? (mb / 1024).toFixed(2) + " GB" : mb.toFixed(1) + " MB";
+  }
+  /** 内存（MB）显示：不足 1 GB 用 MB，超过就拆成 GB + 零头 MB（4 GB / 4 GB 512 MB） */
+  function fmtMem(mb) {
+    const v = Math.max(0, Math.round(Number(mb) || 0));
+    if (v < 1024) return v + " MB";
+    const g = Math.floor(v / 1024), r = v % 1024;
+    return g + " GB" + (r ? " " + r + " MB" : "");
   }
 
   function toast(msg, kind) {
@@ -3433,9 +3441,9 @@ body.booting .app { opacity: 0; }
     const total = state.sysMemory || r.data._totalMemory || 8192;
     const max = Math.min(32768, Math.max(2048, Math.floor(total / 512) * 512));
     [$("#memSlider"), $("#memSlider2")].forEach((s) => { s.max = max; s.value = r.data.maxMemory; });
-    $("#memVal").textContent = r.data.maxMemory + " MB";
-    $("#memVal2").textContent = r.data.maxMemory + " MB";
-    $("#memHint").textContent = `本机物理内存约 ${Math.round(total / 1024 * 10) / 10} GB，建议留出 2 GB 给系统（最大 ${max} MB）。`;
+    $("#memVal").textContent = fmtMem(r.data.maxMemory);
+    $("#memVal2").textContent = fmtMem(r.data.maxMemory);
+    $("#memHint").textContent = `本机物理内存约 ${Math.round(total / 1024 * 10) / 10} GB，建议留出 2 GB 给系统（最大 ${fmtMem(max)}）。`;
     refreshMemInfo();   // 立刻换成「此刻可用内存」的实时口径
     $("#aboutVer").textContent = r.data.appVersion || r.data.version || "0.1.0";
     $("#inpThreads").value = r.data.maxDownloadThreads;
@@ -4255,7 +4263,7 @@ body.booting .app { opacity: 0; }
   let vsMemFollow = false;
   function setVsMemFollow(on) {
     vsMemFollow = on;
-    $("#vsMemVal").textContent = $("#vsMem").value + " MB" + (on ? "（跟随）" : "");
+    $("#vsMemVal").textContent = fmtMem($("#vsMem").value) + (on ? "（跟随）" : "");
   }
   async function openVersionSettings(vid) {
     vsVid = vid;
@@ -6955,17 +6963,17 @@ body.booting .app { opacity: 0; }
       + (d.override && d.override.xmx !== d.recommended
           ? ` · ⚠ 附加参数写死 ${d.override.raw}` : "");
     const live = $("#memLive");
-    if (live) live.textContent = line + " · 建议 " + d.recommended + " MB";
+    if (live) live.textContent = line + " · 建议 " + fmtMem(d.recommended);
     const home = $("#memLiveHome");
     if (home) home.textContent = line;
     const hint = $("#memHint");
     if (hint) {
       hint.textContent = `本机物理内存 ${gb(d.total)}，此刻可用 ${gb(d.available)}（占用 ${d.load}%）。`
-        + `系统预留 ${d.reserve} MB 后，最多能给游戏 ${d.cap} MB；自动模式会在每次启动时按当时的可用内存重新算。`;
+        + `系统预留 ${fmtMem(d.reserve)} 后，最多能给游戏 ${fmtMem(d.cap)}；自动模式会在每次启动时按当时的可用内存重新算。`;
     }
     const amh = $("#autoMemHint");
     if (amh) {
-      amh.textContent = `实时推荐 ${d.recommended} MB（按此刻可用 ${gb(d.available)} 算，`
+      amh.textContent = `实时推荐 ${fmtMem(d.recommended)}（按此刻可用 ${gb(d.available)} 算，`
         + `物理内存共 ${gb(d.total)}）；开启后每次启动都会重新计算，不用手动调。`;
     }
   }
@@ -6995,9 +7003,9 @@ body.booting .app { opacity: 0; }
     });
     const vs = $("#vsMem");
     if (vs && !(state.vsFollow === false)) vs.value = d.recommended;
-    if ($("#memVal")) $("#memVal").textContent = d.recommended + " MB";
-    if ($("#memVal2")) $("#memVal2").textContent = d.recommended + " MB";
-    if ($("#vsMemVal")) $("#vsMemVal").textContent = d.recommended + " MB";
+    if ($("#memVal")) $("#memVal").textContent = fmtMem(d.recommended);
+    if ($("#memVal2")) $("#memVal2").textContent = fmtMem(d.recommended);
+    if ($("#vsMemVal")) $("#vsMemVal").textContent = fmtMem(d.recommended);
     if (state.config) state.config.maxMemory = d.recommended;
     if (state.cfg) { state.cfg.maxMemory = d.recommended; state.cfg.autoMemory = true; }
     const am = $("#chkAutoMem");
@@ -7006,13 +7014,13 @@ body.booting .app { opacity: 0; }
 
     const en = LANG === "en";
     const title = d.applied
-      ? (en ? "Memory optimized to " : "内存已优化为 ") + d.recommended + " MB"
-      : (en ? "Already optimal: " : "内存已经是最佳值：") + d.recommended + " MB";
+      ? (en ? "Memory optimized to " : "内存已优化为 ") + fmtMem(d.recommended)
+      : (en ? "Already optimal: " : "内存已经是最佳值：") + fmtMem(d.recommended);
     const detail = [
       en ? "RAM " + gb(d.total) + ", free now " + gb(d.available) + " (" + d.load + "% used)"
          : "物理内存 " + gb(d.total) + "，此刻可用 " + gb(d.available) + "（占用 " + d.load + "%）",
-      en ? "Reserved for the system: " + d.reserve + " MB; max for the game: " + d.cap + " MB"
-         : "系统预留 " + d.reserve + " MB，最多可给游戏 " + d.cap + " MB",
+      en ? "Reserved for the system: " + fmtMem(d.reserve) + "; max for the game: " + fmtMem(d.cap)
+         : "系统预留 " + fmtMem(d.reserve) + "，最多可给游戏 " + fmtMem(d.cap),
       "",
       ...(d.reasons || []),
     ].join("\n");
@@ -7042,7 +7050,7 @@ body.booting .app { opacity: 0; }
           state.memInfo = r2.data;
           renderMemInfo(r2.data);
           if ($("#inpJvm")) $("#inpJvm").value = (r2.data.jvmArgs || $("#inpJvm").value);
-          toast(en2 ? "Synced -Xmx to " + d.recommended + " MB" : "已同步为 " + d.recommended + " MB", "ok");
+          toast(en2 ? "Synced -Xmx to " + fmtMem(d.recommended) : "已同步为 " + fmtMem(d.recommended), "ok");
         }
       }
     }
@@ -7430,7 +7438,10 @@ body.booting .app { opacity: 0; }
     const syncMem = async (slider, other, valEl) => {
       const v = slider.value;
       other.value = v;
-      valEl.textContent = v + " MB";
+      valEl.textContent = fmtMem(v);
+      // 另一条滑条的数值也跟着变（主页 ⇄ 设置页）
+      const otherVal = other.id === "memSlider2" ? $("#memVal2") : $("#memVal");
+      if (otherVal) otherVal.textContent = fmtMem(v);
       clearTimeout(state.memTimer);
       state.memTimer = setTimeout(() => saveSetting({ maxMemory: parseInt(v, 10) }), 500);
     };
