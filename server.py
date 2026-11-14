@@ -1365,7 +1365,7 @@ CHANGELOG: List[Dict[str, Any]] = [
         ],
     },
     {
-        "version": "1.3.0",
+        "version": "1.2.3",
         "date": "2026-10-30",
         "title": "游戏目录跟着启动器走，版本库也补全了",
         "items": [
