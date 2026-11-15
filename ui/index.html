@@ -1709,43 +1709,20 @@ body.booting .app { opacity: 0; }
           .srv-acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
           .srv-kv { font-size: 12.5px; color: var(--muted); }
           .srv-kv b { color: var(--text); }
+          .srv-closed { text-align: center; padding: 46px 20px; }
+          .srv-closed-icon { font-size: 40px; margin-bottom: 12px; }
+          .srv-closed-msg { font-size: 15.5px; font-weight: 600; }
+          .srv-closed-ps { margin-top: 10px; font-size: 13px; color: var(--muted); }
         </style>
         <div class="srv-wrap">
           <div class="panel">
             <div class="panel-head">
               <span>找服务器 · 脆冰网站</span>
-              <div class="head-actions">
-                <span class="hint" id="srvState" style="margin:0">未连接</span>
-                <button class="btn ghost xs" id="btnSrvRetry" hidden>重新连接</button>
-              </div>
             </div>
-            <div id="srvOff" class="dev-off" hidden>
-              <div>🔌 已关闭与外界连接</div>
-              <div class="hint" style="margin-top:6px">
-                现在连不上网站端的服务器列表。启动器其它功能不受影响；
-                想找服务器，去 设置 →「网站与连接」打开外界连接并填好网站地址。
-              </div>
-            </div>
-            <div id="srvMain">
-              <div class="srv-bar">
-                <input class="input" id="srvQ" placeholder="关键词（名称 / 宣传语）" style="min-width:180px">
-                <input class="input" id="srvType" placeholder="类型，如 生存" style="min-width:120px">
-                <input class="input" id="srvVer" placeholder="MC 版本，如 1.20.1" style="min-width:130px">
-                <input class="input" id="srvMod" placeholder="mod 关键词（可留空）" style="min-width:150px">
-                <label class="srv-kv" style="display:flex;gap:4px;align-items:center">
-                  <input type="checkbox" id="srvMarkon"> 只看 markon
-                </label>
-                <button class="btn primary sm" id="btnSrvSearch">搜索</button>
-                <button class="btn ghost sm" id="btnSrvAll">全部</button>
-                <button class="btn ghost sm" id="btnSrvMine">只看 KCL 已装版本</button>
-              </div>
-              <div class="hint" style="margin-top:6px">
-                数据来自网站服务端的「MC 服务器宣传」，结果按最后修改时间排序。
-                点「我要加入」提交申请，服主同意后就能看到地址。
-              </div>
-              <div class="srv-list" id="srvList">
-                <div class="hint">还没有加载，点「搜索」试试。</div>
-              </div>
+            <div class="srv-closed">
+              <div class="srv-closed-icon">🔌</div>
+              <div class="srv-closed-msg">因外部原因论坛网站关闭，导致该功能暂时无法使用</div>
+              <div class="srv-closed-ps">PS：是某个开发者手滑将网站删了</div>
             </div>
           </div>
         </div>
@@ -2384,7 +2361,9 @@ body.booting .app { opacity: 0; }
     if (page === "map") initMapPage();
     if (page === "accounts") loadAccounts();
     if (page === "settings") loadSettings();
-    if (page === "servers") initServersPage();
+    // 「找服务器」暂时下线（论坛网站关闭）：不再初始化，页面只显示下线说明。
+    // initServersPage 保留着，网站恢复后把这行加回来即可：
+    // if (page === "servers") initServersPage();
     if (page === "home" || page === "settings") { try { refreshMemInfo(); } catch (e) {} }
     // 第一次进指南页：提示可以点「我要试试」
     if (page === "guide") { try { maybeShowTourHint(); } catch (e) {} }
@@ -6718,20 +6697,6 @@ body.booting .app { opacity: 0; }
       { page: "settings", sel: "#presetRow",
         title: "主题与配色",
         text: "5 套预设任选，调好颜色、标题位置后还能「保存预设」，随时切回来。" },
-    ] },
-    { sec: "findsrv", steps: [
-      { page: "settings", sel: "#inpSiteUrl",
-        title: "先连上网站",
-        text: "找服务器的数据来自脆冰网站：这里填网站地址，上面那个开关别勾成「关闭外界连接」。填好再回「找服务器」页。" },
-      { page: "servers", sel: "#srvQ,#srvType,#srvVer,#srvMod",
-        title: "按条件筛",
-        text: "关键词、类型、MC 版本、mod 关键词随便组合；「只看 KCL 已装版本」会自动带上你装好的版本，只显示能直接进的服。" },
-      { page: "servers", sel: "#btnSrvSearch",
-        title: "开始搜索",
-        text: "点搜索拉取列表；「全部」清空条件，「重新连接」用来在断线后重试。" },
-      { page: "servers", sel: "#srvList",
-        title: "申请加入",
-        text: "看中哪个就点卡片上的「我要加入」，服主同意后按钮变成「已加入 · 看地址」，点开就能拿到地址进服。" },
     ] },
     { sec: "devspace", steps: [
       { page: "dev", sel: "#devPostText",
