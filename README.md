@@ -5,6 +5,7 @@
 ## 📦 简介
 
 本仓库托管 **[kcstudio] 脆冰启动器** 的发布版本。脆冰启动器是一款简洁易用的 Minecraft 启动器，无需复杂配置，下载即可运行。
+官网：http://kc-studio-game.site.je/kcl/index.html?i=1
 
 ## ⬇️ 下载
 
@@ -55,6 +56,7 @@ python build_exe.py          # 生成完整版 [kc studio]脆冰启动器.exe
 python build_exe.py --slim   # 生成 压缩启动器.exe（自我增肥版）
 python build_web.py          # 生成 启动器网页端.html
 ```
+## 📖更新日志
 
 按版本号记录，一个版本号下面就是这个版本的全部改动。软件里的「更新日志」也能随时翻看。
 
