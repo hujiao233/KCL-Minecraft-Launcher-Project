@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 先看「使用方法」和已知问题
+    url: https://github.com/hujiao233/KCL-Minecraft-Launcher-Project#-使用方法
+    about: 很多问题 README 里已经有答案；版本更新内容见 Releases
+  - name: 想直接和开发团队聊 / 快速反馈
+    url: https://github.com/hujiao233/KCL-Minecraft-Launcher-Project#-简介
+    about: 打开启动器左侧的「开发空间」，留言会直接进入开发团队的看板

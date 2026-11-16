@@ -1,0 +1,88 @@
+name: 🐞 问题反馈
+description: 启动器报错、闪退、下载失败、启动不了游戏等问题，用这个表单
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先[搜索已有议题](../../issues?q=is%3Aissue)——报错原文是最好的关键词，已经有同样问题就在那个议题下面补充，别开新的。
+        注意事项见 [README「提交议题的注意事项」](../../#-提交议题的注意事项)。
+
+  - type: dropdown
+    id: launcher-version
+    attributes:
+      label: 启动器版本
+      description: 在启动器左下角或「开发 → 关于 KCL」能看到
+      options:
+        - 1.3.1
+        - 1.3.0
+        - 1.2.x 及更早
+        - 从源码运行
+    validations:
+      required: true
+
+  - type: dropdown
+    id: system
+    attributes:
+      label: 操作系统
+      options:
+        - Windows 11
+        - Windows 10
+        - Windows 7 / 8
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题出在哪个功能
+      options:
+        - 启动游戏
+        - 下载（版本 / 模组 / 资源 / 光影）
+        - 登录（正版 / 外置登录）
+        - 界面显示异常
+        - 存档 / 地图
+        - 开发空间 / 网站相关
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从打开启动器开始，一步步写到你看到问题为止；偶发问题写清楚当时的情况
+      placeholder: |
+        1. 打开启动器，进入「XX 页」
+        2. 点击「XX」
+        3. 出现报错：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望的结果 vs 实际的结果
+      placeholder: |
+        期望：……
+        实际：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 报错信息
+      description: |
+        日志在数据目录 `logs\` 文件夹里（日志页也可以直接打开），贴报错相关的几行就行。
+        ⚠️ 不要贴微软令牌、外置登录的 secret、真实姓名等敏感信息。
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截图 / 补充信息（可选）
+      description: 界面问题请附截图；Java 路径、杀毒软件、加速器等环境信息也很有用
