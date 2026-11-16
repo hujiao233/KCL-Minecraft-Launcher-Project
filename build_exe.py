@@ -64,7 +64,7 @@ DEFAULT_FILES = [
     # 下载界面用的方块 / 加载器贴图（ui/assets/blocks），漏了界面图标会空
     "ui/assets/blocks/Grass.png", "ui/assets/blocks/Anvil.png",
     "ui/assets/blocks/NeoForge.png", "ui/assets/blocks/Fabric.png",
-    "ui/assets/blocks/Quilt.png",
+    "ui/assets/blocks/Quilt.png", "ui/assets/hujiao233.png",
 ]
 
 
